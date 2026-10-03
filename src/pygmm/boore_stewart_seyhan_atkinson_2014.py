@@ -63,10 +63,36 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         | turkey      | china_turkey | global     |
         +-------------+--------------+------------+
 
+    The model is vectorized. Each scenario value (``mag``, ``dist_jb``,
+    ``v_s30``, ``depth_1_0``, ``mechanism``, and ``region``) can be a scalar or
+    an array, and the arrays are broadcast against each other. For a scalar
+    scenario, the response and standard deviation have one value per period,
+    as in other models. For arrays of N scenarios, they have shape
+    (N, periods), so, for example, ``pga`` has shape (N,).
+
     Parameters
     ----------
     scenario : :class:`pygmm.model.Scenario`
         earthquake scenario
+    ims : str or sequence of str, optional
+        intensity measures to compute: "pga", "pgv", spectral periods such as
+        "psa_1p000" (1.0 s), "psa_ngawest2_21" (the 21 NGA-West2 comparison
+        periods), and/or "psa_all" (all 105 periods). Computing only
+        the needed intensity measures is much faster for large vectorized
+        scenarios. If *None* (default), all intensity measures are computed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pygmm
+    >>> s = pygmm.Scenario(
+    ...     mag=np.array([6.0, 7.0]), dist_jb=np.array([10.0, 50.0]),
+    ...     v_s30=300.0, mechanism=np.array(["SS", "RS"]))
+    >>> pygmm.BooreStewartSeyhanAtkinson2014(s, ims=["pga"]).pga.shape
+    (2,)
+    >>> m = pygmm.BooreStewartSeyhanAtkinson2014(s, ims=["pga", "psa_ngawest2_21"])
+    >>> m.spec_accels.shape
+    (2, 21)
 
     """
 
@@ -113,14 +139,20 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         ),
     ]
 
-    def __init__(self, scenario: model.Scenario):
+    def __init__(self, scenario: model.Scenario, ims=None):
         """Initialize the model.
 
         Args:
             scenario (:class:`pygmm.model.Scenario`): earthquake scenario.
+            ims (str or sequence of str, optional): intensity measures to
+                compute. If *None* (default), all intensity measures are
+                computed.
         """
-        super().__init__(scenario)
-        pga_ref = np.exp(self._calc_ln_resp(np.nan)[self.INDEX_PGA])
+        super().__init__(scenario, ims)
+        # The nonlinear site term depends on PGA at the reference condition,
+        # which only needs the PGA coefficients
+        c_ref = self.COEFF[[self.INDEX_PGA]]
+        pga_ref = np.exp(self._calc_ln_resp(np.nan, c_ref)[..., 0])
         self._ln_resp = self._calc_ln_resp(pga_ref)
         self._ln_std, self._tau, self._phi = self._calc_ln_std()
 
@@ -128,6 +160,9 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         """Check the inputs."""
         super()._check_inputs()
         s = self._scenario
+        if np.ndim(s.mechanism) > 0 or np.ndim(s.mag) > 0:
+            self._check_mag_by_mechanism()
+            return
         # Mechanism specific limits
         if s.mechanism == "SS":
             _min, _max = 3.0, 8.5
@@ -150,14 +185,40 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
                     _max,
                 )
 
-    def _calc_ln_resp(self, pga_ref: ArrayLike) -> np.ndarray:
+    def _check_mag_by_mechanism(self) -> None:
+        """Check mechanism specific magnitude limits for vectorized scenarios."""
+        s = self._scenario
+        mag, mechanism = np.broadcast_arrays(np.asarray(s.mag), np.asarray(s.mechanism))
+        for option, name, _min, _max in [
+            ("SS", "strike-slip", 3.0, 8.5),
+            ("NS", "normal-slip", 3.0, 7.0),
+        ]:
+            is_option = model.equals(mechanism, option)
+            outside = is_option & ~((_min <= mag) & (mag <= _max))
+            if np.any(outside):
+                logging.warning(
+                    "Magnitude (%d of %d %s earthquakes, %g to %g) exceeds"
+                    " recommended bounds (%g to %g)!",
+                    np.count_nonzero(outside),
+                    np.count_nonzero(is_option),
+                    name,
+                    np.min(mag[outside]),
+                    np.max(mag[outside]),
+                    _min,
+                    _max,
+                )
+
+    def _calc_ln_resp(self, pga_ref: ArrayLike, c=None) -> np.ndarray:
         """Calculate the natural logarithm of the response.
 
         Parameters
         ----------
-        pga_ref : float
+        pga_ref : float or array_like
             peak ground acceleration (g) at the reference
             condition. If :class:`np.nan`, then no site term is applied.
+        c : :class:`numpy.recarray`, optional
+            coefficients for the periods to compute. If *None*, the
+            coefficients for the requested intensity measures are used.
 
         Returns
         -------
@@ -166,46 +227,63 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
 
         """
         s = self._scenario
-        c = self.COEFF
+        if c is None:
+            c = self._coeff_rows(self.COEFF)
+        # Scenario values get a trailing axis to broadcast against the
+        # coefficients, which have one value per period
+        mag = model.as_column(s.mag)
+        mechanism = model.as_column(s.mechanism)
+        region = model.as_column(s.region)
 
         # Compute the event term
         ########################
-        if s.mechanism == "SS":
-            event = np.array(c.e_1)
-        elif s.mechanism == "NS":
-            event = np.array(c.e_2)
-        elif s.mechanism == "RS":
-            event = np.array(c.e_3)
-        else:
+        event = np.select(
+            [
+                model.equals(mechanism, "SS"),
+                model.equals(mechanism, "NS"),
+                model.equals(mechanism, "RS"),
+            ],
+            [c.e_1, c.e_2, c.e_3],
             # Unspecified
-            event = np.array(c.e_0)
+            default=c.e_0,
+        )
 
-        mask = s.mag <= c.M_h
-        event[mask] += (c.e_4 * (s.mag - c.M_h) + c.e_5 * (s.mag - c.M_h) ** 2)[mask]
-        event[~mask] += (c.e_6 * (s.mag - c.M_h))[~mask]
+        mask = mag <= c.M_h
+        event = event + np.where(
+            mask,
+            c.e_4 * (mag - c.M_h) + c.e_5 * (mag - c.M_h) ** 2,
+            c.e_6 * (mag - c.M_h),
+        )
 
         # Compute the distance terms
         ############################
-        if s.region in ["china", "turkey"]:
-            dc_3 = c.dc_3ct
-        elif s.region in ["italy", "japan"]:
-            dc_3 = c.dc_3ij
-        else:
-            # s.region in 'global', 'california', 'new_zealand', 'taiwan'
-            dc_3 = c.dc_3global
+        dc_3 = np.select(
+            [
+                model.equals(region, "china") | model.equals(region, "turkey"),
+                model.equals(region, "italy") | model.equals(region, "japan"),
+            ],
+            [c.dc_3ct, c.dc_3ij],
+            # 'global', 'california', 'new_zealand', 'taiwan'
+            default=c.dc_3global,
+        )
 
-        dist = np.sqrt(s.dist_jb**2 + c.h**2)
-        path = (c.c_1 + c.c_2 * (s.mag - c.M_ref)) * np.log(dist / c.R_ref) + (
+        dist = np.sqrt(model.as_column(s.dist_jb) ** 2 + c.h**2)
+        path = (c.c_1 + c.c_2 * (mag - c.M_ref)) * np.log(dist / c.R_ref) + (
             c.c_3 + dc_3
         ) * (dist - c.R_ref)
 
-        if np.isnan(pga_ref):
+        if np.all(np.isnan(pga_ref)):
             # Reference condition. No site effect
             site = 0
         else:
-            # Compute the site term
-            site = self.calc_site_term(
-                pga_ref, s.v_s30, s.depth_1_0, s.get("depth_1_0", None)
+            # Compute the site term. The basin model uses the Japan relation for
+            # Z1.0 for the Japan region, and the global relation otherwise.
+            site = self._calc_site_term(
+                c,
+                model.as_column(pga_ref),
+                model.as_column(s.v_s30),
+                None if s.depth_1_0 is None else model.as_column(s.depth_1_0),
+                s.region if np.ndim(s.region) == 0 else region,
             )
 
         ln_resp = event + path + site
@@ -241,19 +319,19 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         site_term: :class:`np.ndarray`
             site term that is applied to the natural log response.
         """
+        return cls._calc_site_term(cls.COEFF, pga_ref, v_s30, depth_1_0, region)
 
-        c = cls.COEFF
-
+    @staticmethod
+    def _calc_site_term(c, pga_ref, v_s30, depth_1_0, region) -> ArrayLike:
+        """Calculate the site term for the periods in the coefficients `c`."""
         f_lin = c.c * np.log(np.minimum(v_s30, c.V_c) / c.V_ref)
 
         # Add the nonlinearity to the site term
         f_2 = c.f_4 * (
-            np.exp(c.f_5 * (min(v_s30, 760) - 360.0)) - np.exp(c.f_5 * (760.0 - 360.0))
+            np.exp(c.f_5 * (np.minimum(v_s30, 760) - 360.0))
+            - np.exp(c.f_5 * (760.0 - 360.0))
         )
         f_nl = c.f_1 + f_2 * np.log((pga_ref + c.f_3) / c.f_3)
-
-        # Add the basin effect to the site term
-        F_dz1 = np.zeros_like(c.period)
 
         # Compute the average from the Chiou and Youngs (2014)
         # model convert from m to km.
@@ -264,8 +342,10 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         else:
             delta_depth_1_0 = 0.0
 
-        mask = c.period >= 0.65
-        F_dz1[mask] = np.minimum(c.f_6 * delta_depth_1_0, c.f_7)[mask]
+        # Add the basin effect to the site term for periods of 0.65 s and longer
+        F_dz1 = np.where(
+            c.period >= 0.65, np.minimum(c.f_6 * delta_depth_1_0, c.f_7), 0.0
+        )
 
         site = f_lin + f_nl + F_dz1
 
@@ -280,20 +360,24 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
             natural log standard deviation
 
         """
-        c = self.COEFF
+        c = self._coeff_rows(self.COEFF)
         s = self._scenario
+        mag = model.as_column(s.mag)
 
         # Uncertainty model
-        tau = c.tau_1 + (c.tau_2 - c.tau_1) * (np.clip(s.mag, 4.5, 5.5) - 4.5)
-        phi = c.phi_1 + (c.phi_2 - c.phi_1) * (np.clip(s.mag, 4.5, 5.5) - 4.5)
+        tau = c.tau_1 + (c.tau_2 - c.tau_1) * (np.clip(mag, 4.5, 5.5) - 4.5)
+        phi = c.phi_1 + (c.phi_2 - c.phi_1) * (np.clip(mag, 4.5, 5.5) - 4.5)
 
         # Modify phi for Vs30
-        phi -= c.dphi_V * np.clip(np.log(c.V_2 / s.v_s30) / np.log(c.V_2 / c.V_1), 0, 1)
+        phi = phi - c.dphi_V * np.clip(
+            np.log(c.V_2 / model.as_column(s.v_s30)) / np.log(c.V_2 / c.V_1), 0, 1
+        )
 
         # Modify phi for R
-        phi += c.dphi_R * np.clip(
+        phi = phi + c.dphi_R * np.clip(
             # Maximum added for zero distance caes
-            np.log(np.maximum(s.dist_jb, 0.1) / c.R_1) / np.log(c.R_2 / c.R_1),
+            np.log(np.maximum(model.as_column(s.dist_jb), 0.1) / c.R_1)
+            / np.log(c.R_2 / c.R_1),
             0,
             1,
         )

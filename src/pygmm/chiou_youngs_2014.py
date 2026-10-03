@@ -296,8 +296,9 @@ class ChiouYoungs2014(model.GroundMotionModel):
         v_s30 : float
             time-averaged shear-wave velocity over the top 30 m
             of the site (:math:`V_{s30}`, m/s).
-        region : str
-            basin region. Valid options: "california", "japan"
+        region : str or array_like
+            basin region. Valid options: "california", "japan". An array of
+            regions is broadcast against `v_s30`.
 
         Returns
         -------
@@ -305,6 +306,12 @@ class ChiouYoungs2014(model.GroundMotionModel):
             estimated depth to a shear-wave velocity of 1 km/sec (km)
 
         """
+        if np.ndim(region) > 0:
+            return np.where(
+                model.equals(region, "japan"),
+                ChiouYoungs2014.calc_depth_1_0(v_s30, "japan"),
+                ChiouYoungs2014.calc_depth_1_0(v_s30, "california"),
+            )
         if region in ["japan"]:
             # Japan
             power = 2

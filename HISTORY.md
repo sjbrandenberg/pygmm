@@ -3,6 +3,23 @@ title: History
 ---
 
 # Unreleased
+- Changed: Idriss (2014) accepts arrays of scenario values (`mag`, `dist_rup`, `v_s30`, `mechanism`).
+  Arrays of N scenarios give results with shape (N, periods), e.g., `pga` with shape (N,).
+  Scalar scenarios give the same results as before.
+- Changed: `NumericParameter` and `CategoricalParameter` check arrays of values, with one warning
+  for the values outside of the limits or options.
+- Added: `ln_pga` property, the natural logarithm of PGA, which avoids computing `np.log(pga)`.
+- Changed: Boore, Stewart, Seyhan, and Atkinson (2014) accepts arrays of scenario values (`mag`,
+  `dist_jb`, `v_s30`, `depth_1_0`, `mechanism`, `region`) and the `ims` argument. Scalar scenarios give
+  the same results as before.
+- Added: `ims` argument for Idriss (2014) and Boore et al. (2014) to compute only the requested
+  intensity measures: "pga", "pgv", individual spectral periods such as "psa_1p000" (1.0 s),
+  "psa_ngawest2_21" (the 21 NGA-West2 comparison periods), and "psa_all" (all periods).
+  `periods` and `spec_accels` contain only the computed periods, and `psa_ims` gives their names.
+- Fixed: Boore et al. (2014) used the global relation for the reference depth to 1.0 km/s for the
+  Japan region. It now uses the Japan relation, which changes the basin term at periods of 0.65 s
+  and longer for `region="japan"` with `depth_1_0` specified.
+- Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: Afshari and Stewart (2016) passed the mechanism as the basin region, so the California
   relation for the mean depth to 1.0 km/s was always used. It now has an optional `region`
   parameter ("california", "global", or "japan"; default "california") and uses the Japan
