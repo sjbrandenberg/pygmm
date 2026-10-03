@@ -2,6 +2,17 @@
 title: History
 ---
 
+# Unreleased
+- Fixed: Afshari and Stewart (2016) passed the mechanism as the basin region, so the California
+  relation for the mean depth to 1.0 km/s was always used. It now has an optional `region`
+  parameter ("california", "global", or "japan"; default "california") and uses the Japan
+  relation for `region="japan"`.
+- Fixed: Afshari and Stewart (2016) computed the basin depth differential in km instead of m,
+  which made the basin term about 1,000 times too small. Figure 12 of the paper shows that c_5
+  applies to the differential in m (Table 2 lists c_5 in 1/km), consistent with the 200 m limit.
+- Fixed: Afshari and Stewart (2016) used b_1 = 6.188 instead of 6.579 for the D20-80 duration of
+  reverse earthquakes (Table 1 of the paper).
+
 # 0.8.0 (2025-07-24)
 - Added: Pinilla-Ramos et al. (2023) model for duration of crustal earthquakes
 - Added: Pinilla-Ramos et al. (2024) model for duration of subduction earthquakes

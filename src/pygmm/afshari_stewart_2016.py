@@ -8,6 +8,10 @@ from . import model
 class AfshariStewart2016(model.Model):
     """Afshari and Stewart (2016, :cite:`afshari2016`) duration model.
 
+    The basin term uses the difference between `depth_1_0` and the average
+    depth for the site's `v_s30`. The average depth uses the Japan relation for
+    ``region="japan"``, and the California relation otherwise.
+
     Parameters
     ----------
     scenario : :class:`pygmm.model.Scenario`
@@ -24,6 +28,9 @@ class AfshariStewart2016(model.Model):
         model.NumericParameter("v_s30", True, 200, 1000),
         model.CategoricalParameter("mechanism", True, ["SS", "NS", "RS"]),
         model.NumericParameter("depth_1_0", False),
+        model.CategoricalParameter(
+            "region", False, ["california", "global", "japan"], "california"
+        ),
     ]
 
     def __init__(self, scenario):
@@ -46,7 +53,7 @@ class AfshariStewart2016(model.Model):
             b_1 = np.array([4.992, 3.170, 4.778])
         elif s.mechanism == "RS":
             b_0 = np.array([0.7806, 1.612, 0.7729])
-            b_1 = np.array([7.061, 4.536, 6.188])
+            b_1 = np.array([7.061, 4.536, 6.579])
         elif s.mechanism == "SS":
             b_0 = np.array([1.279, 2.302, 0.8804])
             b_1 = np.array([5.578, 3.467, 6.188])
@@ -86,7 +93,11 @@ class AfshariStewart2016(model.Model):
         dz_1ref = 200
         # depth to bedrock duration
         if s.depth_1_0 is not None:
-            dz_1 = s.depth_1_0 - self.calc_depth_1_0(s.v_s30, s.mechanism)
+            # Basin depth differential in m (Equation 10 and Figure 12 of the
+            # paper). depth_1_0 and calc_depth_1_0 are in km. Table 2 lists
+            # c_5 in 1/km, but Figure 12 shows that it applies to dz_1 in m,
+            # consistent with dz_1ref = 200 m.
+            dz_1 = 1000 * (s.depth_1_0 - self.calc_depth_1_0(s.v_s30, s.region))
             F_dz1 = c_5 * (dz_1 if dz_1 <= dz_1ref else dz_1ref)
         else:
             F_dz1 = 0
