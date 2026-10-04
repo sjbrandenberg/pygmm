@@ -100,7 +100,9 @@ class ChiouYoungs2014(model.GroundMotionModel):
         c = self._coeff_rows(self.COEFF)
         ln_resp_ref = self._calc_ln_resp_ref(c)
         self._ln_resp = self._calc_ln_resp_site(ln_resp_ref, c)
-        self._ln_std = self._calc_ln_std(np.exp(ln_resp_ref), c)
+        self._ln_std, self._tau, self._phi = self._calc_ln_std(
+            np.exp(ln_resp_ref), c
+        )
 
     def _calc_ln_resp_ref(self, c=None) -> np.ndarray:
         """Calculate the natural logarithm of the reference response.
@@ -308,7 +310,9 @@ class ChiouYoungs2014(model.GroundMotionModel):
 
         return site_term
 
-    def _calc_ln_std(self, resp_ref: np.ndarray, c=None) -> np.ndarray:
+    def _calc_ln_std(
+        self, resp_ref: np.ndarray, c=None
+    ) -> (np.ndarray, np.ndarray, np.ndarray):
         """Calculate the logarithmic standard deviation.
 
         Parameters
@@ -324,6 +328,10 @@ class ChiouYoungs2014(model.GroundMotionModel):
         -------
         ln_std : class:`np.array`:
             natural log standard deviation
+        tau : class:`np.array`:
+            between-event standard deviation, including the nonlinear site term
+        phi : class:`np.array`:
+            within-event standard deviation
 
         """
         if c is None:
@@ -354,7 +362,7 @@ class ChiouYoungs2014(model.GroundMotionModel):
         )
 
         ln_std = np.sqrt((1 + nl_0) ** 2 * tau**2 + phi_nl**2)
-        return ln_std
+        return ln_std, np.sqrt((1 + nl_0) ** 2 * tau**2), phi_nl
 
     def _check_inputs(self) -> None:
         """Check the inputs."""
