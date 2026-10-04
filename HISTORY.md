@@ -12,14 +12,35 @@ title: History
 - Changed: Boore, Stewart, Seyhan, and Atkinson (2014) accepts arrays of scenario values (`mag`,
   `dist_jb`, `v_s30`, `depth_1_0`, `mechanism`, `region`) and the `ims` argument. Scalar scenarios give
   the same results as before.
-- Added: `ims` argument for Idriss (2014) and Boore et al. (2014) to compute only the requested
-  intensity measures: "pga", "pgv", individual spectral periods such as "psa_1p000" (1.0 s),
+- Changed: Abrahamson, Silva, and Kamai (2014), Campbell and Bozorgnia (2014), and Chiou and Youngs
+  (2014) accept arrays of scenario values and the `ims` argument. Values that are estimated when not
+  provided (e.g., `depth_tor`, `width`, `depth_1_0`, `depth_2_5`, `depth_hyp`) are estimated for each
+  scenario. Scalar scenarios give the same results as before.
+- Changed: Abrahamson, Gregor, and Addo (2016) and Coppersmith and Bommer (2014) accept arrays of
+  scenario values (`mag`, `dist_rup`, `dist_hyp`, `depth_hyp`, `v_s30`, `event_type`,
+  `tectonic_region`) and the `ims` argument, which follows the other keyword arguments. `dist_hyp`
+  and `depth_hyp` may be *None* when no events are intraslab, and a missing distance or depth that is
+  needed raises a `ValueError`.
+- Changed: Akkar, Sandikkaya, and Bommer (2014), Derras, Bard, and Cotton (2014), and Hermkes, Kuehn,
+  and Riggelsen (2014) accept arrays of scenario values and the `ims` argument. Derras et al. (2014)
+  raises a `ValueError`, instead of a `KeyError`, for an unsupported mechanism.
+- Changed: Atkinson and Boore (2006), Campbell (2003), Pezeshk et al. (2011), and Tavakoli and
+  Pezeshk (2005) accept arrays of `mag` and `dist_rup` (and `v_s30` for Atkinson and Boore (2006))
+  and the `ims` argument.
+- Changed: `calc_width`, `calc_depth_tor`, `calc_depth_1_0`, and `calc_site_term` of Abrahamson et al.
+  (2014); `calc_depth_2_5`, `calc_width`, `calc_depth_hyp`, `calc_depth_bor`, and `calc_site_term` of
+  Campbell and Bozorgnia (2014); and `calc_depth_tor` and `calc_site_term` of Chiou and Youngs (2014)
+  accept arrays.
+- Added: `ims` argument for all ground motion models (`GroundMotionModel` subclasses) to compute only
+  the requested intensity measures: "pga", "pgv", individual spectral periods such as "psa_1p000" (1.0 s),
   "psa_ngawest2_21" (the 21 NGA-West2 comparison periods), and "psa_all" (all periods).
   `periods` and `spec_accels` contain only the computed periods, and `psa_ims` gives their names.
 - Fixed: Boore et al. (2014) used the global relation for the reference depth to 1.0 km/s for the
   Japan region. It now uses the Japan relation, which changes the basin term at periods of 0.65 s
   and longer for `region="japan"` with `depth_1_0` specified.
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
+- Fixed: the warning for a scalar value above a parameter's recommended limit showed
+  "{self.max}" instead of the limit.
 - Fixed: Afshari and Stewart (2016) passed the mechanism as the basin region, so the California
   relation for the mean depth to 1.0 km/s was always used. It now has an optional `region`
   parameter ("california", "global", or "japan"; default "california") and uses the Japan

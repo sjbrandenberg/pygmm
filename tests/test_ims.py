@@ -1,5 +1,6 @@
 """Test selecting intensity measures with the ``ims`` argument."""
 
+import inspect
 import warnings
 
 import numpy as np
@@ -36,7 +37,39 @@ def bssa14(ims=None, n=300):
         return pygmm.BooreStewartSeyhanAtkinson2014(s, ims=ims)
 
 
-MODELS = {"idriss": (idriss, 22), "bssa14": (bssa14, 105)}
+def nga_west2_scenario(n):
+    rng = np.random.default_rng(0)
+    dist_jb = rng.uniform(0.0, 200.0, n)
+    on_hanging_wall = rng.choice([True, False], n)
+    return pygmm.Scenario(
+        mag=rng.uniform(4.0, 8.0, n),
+        dist_jb=dist_jb,
+        dist_rup=dist_jb + rng.uniform(0.0, 10.0, n),
+        dist_x=np.where(on_hanging_wall, dist_jb, -dist_jb),
+        on_hanging_wall=on_hanging_wall,
+        dip=rng.choice([45.0, 90.0], n),
+        v_s30=rng.uniform(180.0, 1300.0, n),
+        mechanism=rng.choice(["SS", "NS", "RS"], n),
+        region=rng.choice(["global", "california", "japan", "china"], n),
+    )
+
+
+def nga_west2_factory(model):
+    def factory(ims=None, n=300):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return model(nga_west2_scenario(n), ims=ims)
+
+    return factory
+
+
+MODELS = {
+    "idriss": (idriss, 22),
+    "bssa14": (bssa14, 105),
+    "ask14": (nga_west2_factory(pygmm.AbrahamsonSilvaKamai2014), 22),
+    "cb14": (nga_west2_factory(pygmm.CampbellBozorgnia2014), 21),
+    "cy14": (nga_west2_factory(pygmm.ChiouYoungs2014), 24),
+}
 
 
 @pytest.fixture(params=sorted(MODELS))
@@ -156,12 +189,11 @@ def test_psa_not_computed_raises(make, attr):
         getattr(m, attr)
 
 
-def test_models_without_ims_support_are_unchanged():
-    # Models without the ims argument keep all of their periods
-    m = pygmm.ChiouYoungs2014(
-        pygmm.Scenario(
-            mag=6.5, dist_rup=20.0, dist_jb=20.0, dist_x=20.0, v_s30=760.0, dip=90.0
-        )
-    )
-    assert len(m.periods) == len(m.INDICES_PSA)
-    assert len(m.psa_ims) == len(m.INDICES_PSA)
+@pytest.mark.parametrize(
+    "model",
+    [m for m in pygmm.models if issubclass(m, GroundMotionModel)]
+    + [pygmm.AbrahamsonGregorAddo2016],
+    ids=lambda m: m.__name__,
+)
+def test_all_ground_motion_models_accept_ims(model):
+    assert "ims" in inspect.signature(model.__init__).parameters

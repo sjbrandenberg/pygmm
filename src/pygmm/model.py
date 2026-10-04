@@ -703,7 +703,7 @@ class NumericParameter(Parameter):
             elif self.max is not None and self.max < value:
                 warnings.warn(
                     f"{self.name} ({value}) "
-                    "is greater than the recommended limit ({self.max}).",
+                    f"is greater than the recommended limit ({self.max}).",
                     UserWarning,
                     stacklevel=2,
                 )
