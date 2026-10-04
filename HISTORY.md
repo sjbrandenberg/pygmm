@@ -31,6 +31,17 @@ title: History
   (2014); `calc_depth_2_5`, `calc_width`, `calc_depth_hyp`, `calc_depth_bor`, and `calc_site_term` of
   Campbell and Bozorgnia (2014); and `calc_depth_tor` and `calc_site_term` of Chiou and Youngs (2014)
   accept arrays.
+- Changed: the duration models of Abrahamson and Silva (1996), Kempton and Stewart (2006), Afshari
+  and Stewart (2016), and Pinilla-Ramos et al. (2023, 2024) accept arrays of scenario values. Arrays
+  of N scenarios give durations and standard errors with shape (N,) (fields of the record arrays for
+  Kempton and Stewart (2006) and Afshari and Stewart (2016)), and `AbrahamsonSilva1996.interp`
+  returns shape (N, len(nias)), or (N, len(stds), len(nias)) with `stds`. Scalar scenarios give the
+  same results as before. `AfshariStewart2016.calc_depth_1_0` accepts arrays of `v_s30` and
+  `region`.
+- Changed: `pinilla_ramos_et_al_2024.duration_model` uses all of the values of array inputs. It
+  previously used only the first value.
+- Fixed: `AbrahamsonSilva1996.interp` and `calc_ln_dur_incr` no longer modify the `nias` array that
+  is passed in, and accept integer values.
 - Added: `ims` argument for all ground motion models (`GroundMotionModel` subclasses) to compute only
   the requested intensity measures: "pga", "pgv", individual spectral periods such as "psa_1p000" (1.0 s),
   "psa_ngawest2_21" (the 21 NGA-West2 comparison periods), and "psa_all" (all periods).
