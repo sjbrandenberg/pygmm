@@ -52,6 +52,9 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: Pinilla-Ramos et al. (2023) had a0 = 1 instead of 0 for the 0.75 row of the conditional
+  model, which doubled the durations from `duration_for_energy` for energies between about 0.725
+  and 0.775 other than 0.75. These energies now give the D5-75 durations.
 - Fixed: `AbrahamsonSilva1996.interp` added the increment for the 5 to 75% duration twice, which
   made the interpolated durations about 0.9% too large. `interp(0.75)` now equals `duration`, and
   the results match the reference spreadsheet to within its rounding.

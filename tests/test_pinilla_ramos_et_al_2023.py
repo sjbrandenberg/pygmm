@@ -345,3 +345,13 @@ def test_mismatched_lengths_raise():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+@pytest.mark.parametrize("energy", [0.74, 0.76])
+def test_energies_near_75_percent_match_d5_75(energy):
+    # Energies that are not exactly 0.75 use the 0.75 row of the conditional
+    # model, which reproduces the D5-75 model
+    m = PinillaRamosEtAl2023(pygmm.Scenario(mag=7.0, dist_rup=50.0, v_s30=400.0))
+    np.testing.assert_allclose(
+        m.duration_for_energy(energy), m.duration_for_energy(0.75), rtol=1e-12
+    )
