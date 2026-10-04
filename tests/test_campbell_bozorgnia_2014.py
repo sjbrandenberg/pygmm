@@ -430,3 +430,39 @@ def test_helpers_scalar_types():
     assert isinstance(CB14.calc_width(6.0, 45.0, 2.0), float)
     assert isinstance(CB14.calc_depth_hyp(6.0, 45.0, 2.0, 12.0), float)
     assert CB14.calc_site_term(0.2, 400.0, 1.5).shape == (23,)
+
+
+def soft_site_scenario():
+    # Strong nonlinear site response reduces short-period PSA below PGA
+    mag = np.array([5.5, 6.5, 7.5, 8.0])
+    return pygmm.Scenario(
+        mag=mag,
+        dist_rup=np.full(4, 5.0),
+        dist_jb=np.full(4, 5.0),
+        dist_x=np.full(4, -5.0),
+        dip=90.0,
+        v_s30=150.0,
+        mechanism="SS",
+        region="global",
+    )
+
+
+def test_short_period_psa_not_less_than_pga():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        m = CB14(soft_site_scenario())
+    is_short = m.periods < 0.25
+    # The rule applies for these scenarios
+    assert np.any(m.spec_accels[:, is_short] == m.pga[:, np.newaxis])
+    assert np.all(m.spec_accels[:, is_short] >= m.pga[:, np.newaxis])
+
+
+@pytest.mark.parametrize("ims", [["psa_0p050"], ["psa_0p050", "psa_1p000"]])
+def test_short_period_psa_without_pga_matches_default(ims):
+    # PGA is computed for the rule even if it is not requested
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        full = CB14(soft_site_scenario())
+        m = CB14(soft_site_scenario(), ims=ims)
+    cols = np.searchsorted(full.periods, m.periods)
+    np.testing.assert_array_equal(m.spec_accels, full.spec_accels[:, cols])

@@ -190,7 +190,16 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
         # the reference condition, which only needs the PGA coefficients
         c_ref = self.COEFF[[self.INDEX_PGA]]
         pga_ref = np.exp(self._calc_ln_resp(np.nan, self.V_REF, c_ref)[..., 0])
-        self._ln_resp = self._calc_ln_resp(pga_ref, self._scenario.v_s30)
+        ln_resp = self._calc_ln_resp(pga_ref, self._scenario.v_s30)
+
+        # PSA at periods shorter than 0.25 s is not less than PGA
+        periods = self._coeff_rows(self.PERIODS)
+        is_short = (0 < periods) & (periods < 0.25)
+        if np.any(is_short):
+            c_pga = self.COEFF[[self.INDEX_PGA]]
+            ln_pga = self._calc_ln_resp(pga_ref, self._scenario.v_s30, c_pga)
+            ln_resp = np.where(is_short, np.maximum(ln_resp, ln_pga), ln_resp)
+        self._ln_resp = ln_resp
         self._ln_std, self._tau, self._phi = self._calc_ln_std(pga_ref)
 
     def _calc_ln_resp(self, pga_ref: ArrayLike, v_s30: ArrayLike, c=None) -> np.ndarray:
