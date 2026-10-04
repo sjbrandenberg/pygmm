@@ -187,3 +187,190 @@ def test_region_does_not_matter_without_basin_depth():
 def test_japan_and_california_basin_terms_differ():
     kwds = dict(v_s30=300.0, depth_1_0=0.2)
     assert np.all(np.abs(ln_dur(region="japan", **kwds) - ln_dur(**kwds)) > 1e-3)
+
+
+# Tests of the vectorized model against scalar scenarios
+
+MAGS = [2.5, 5.2, 5.35, 5.6, 6.0, 6.7, 7.15, 7.4, 8.0]
+DISTS = [0.0, 5.0, 10.0, 30.0, 50.0, 250.0]
+V_S30S = [150.0, 400.0, 600.0, 1100.0]
+# "U" is not an option, so it uses the unspecified mechanism coefficients
+MECHANISMS = ["NS", "RS", "SS", "U"]
+REGIONS = ["california", "global", "japan"]
+# Basin depths below, near, and well above the average depth (above the 200 m cap)
+DEPTHS = [0.0, 0.3, 1.5]
+NAMES = ["mag", "dist_rup", "v_s30", "mechanism", "region", "depth_1_0"]
+
+
+def scalar_model(**kwds):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return AfshariStewart2016(Scenario(**kwds))
+
+
+def vector_model(**kwds):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return AfshariStewart2016(Scenario(**{k: np.array(v) for k, v in kwds.items()}))
+
+
+def as_array(recarray):
+    """Stack the fields of a duration recarray along the last axis."""
+    return np.stack([recarray[n] for n in recarray.dtype.names], axis=-1)
+
+
+@pytest.mark.parametrize("with_depth", [True, False])
+def test_vectorized_matches_scalar(with_depth):
+    names = NAMES if with_depth else NAMES[:-1]
+    grid = [MAGS, DISTS, V_S30S, MECHANISMS, REGIONS] + ([DEPTHS] if with_depth else [])
+    rows = list(itertools.product(*grid))
+    m = vector_model(**dict(zip(names, zip(*rows))))
+    scalars = [scalar_model(**dict(zip(names, row))) for row in rows]
+    for attr in ["duration", "std_err"]:
+        expected = np.array([as_array(getattr(s, attr)) for s in scalars])
+        actual = as_array(getattr(m, attr))
+        assert actual.shape == (len(rows), 3)
+        np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(m._ln_dur, [s._ln_dur for s in scalars])
+
+
+def test_basin_term_is_capped():
+    # The basin term is capped at 200 m for both vectorized and scalar scenarios
+    v_s30 = 300.0
+    mean = AfshariStewart2016.calc_depth_1_0(v_s30)
+    depth_1_0 = mean + np.array([0.0, 0.1, 0.2, 0.5, 1.0])
+    m = vector_model(
+        mag=np.full(5, 6.5),
+        dist_rup=30.0,
+        v_s30=v_s30,
+        mechanism="SS",
+        depth_1_0=depth_1_0,
+    )
+    base = scalar_model(mag=6.5, dist_rup=30.0, v_s30=v_s30, mechanism="SS")._ln_dur
+    np.testing.assert_allclose(
+        m._ln_dur - base,
+        np.minimum(1000 * (depth_1_0 - mean), 200)[:, np.newaxis] * PAPER["c_5"],
+        rtol=1e-6,
+        atol=1e-12,
+    )
+
+
+def test_vectorized_shapes():
+    n = 4
+    m = vector_model(
+        mag=np.linspace(5, 7, n),
+        dist_rup=np.linspace(5, 100, n),
+        v_s30=400.0,
+        mechanism="SS",
+    )
+    assert m._ln_dur.shape == (n, 3)
+    for rec in [m.duration, m.std_err]:
+        assert rec.dtype.names == ("D_5t75", "D_5t95", "D_20t80")
+        assert rec.shape == (n,)
+        for name in rec.dtype.names:
+            assert rec[name].shape == (n,)
+
+
+def test_std_err_is_broadcast():
+    # The standard error only depends on magnitude, but has the shape of the durations
+    m = vector_model(
+        mag=6.0, dist_rup=np.array([5.0, 50.0]), v_s30=400.0, mechanism="SS"
+    )
+    assert m.std_err.D_5t95.shape == (2,)
+    expected = scalar_model(mag=6.0, dist_rup=5.0, v_s30=400.0, mechanism="SS")
+    np.testing.assert_array_equal(m.std_err.D_5t95, expected.std_err.D_5t95)
+
+
+def test_scalar_shapes_are_unchanged():
+    m = scalar_model(mag=6.0, dist_rup=50.0, v_s30=300.0, mechanism="SS")
+    assert m._ln_dur.shape == (3,)
+    assert m._std_err.shape == (3,)
+    for rec in [m.duration, m.std_err]:
+        assert isinstance(rec, np.recarray)
+        assert rec.shape == ()
+        # Fields are 0-d arrays
+        assert rec.D_5t75.shape == ()
+
+
+def test_scalars_broadcast_with_arrays():
+    mag = np.array([5.0, 6.0, 7.0])
+    dist_rup = np.array([5.0, 20.0, 80.0])
+    m = vector_model(
+        mag=mag,
+        dist_rup=dist_rup,
+        v_s30=400.0,
+        mechanism="RS",
+        region="japan",
+        depth_1_0=0.5,
+    )
+    expected = [
+        scalar_model(
+            mag=mg,
+            dist_rup=d,
+            v_s30=400.0,
+            mechanism="RS",
+            region="japan",
+            depth_1_0=0.5,
+        )._ln_dur
+        for mg, d in zip(mag, dist_rup)
+    ]
+    np.testing.assert_array_equal(m._ln_dur, expected)
+
+
+def test_multidimensional_inputs():
+    mag, dist_rup = np.meshgrid(
+        [5.5, 6.5, 7.5], [5.0, 20.0, 80.0, 150.0], indexing="ij"
+    )
+    m = vector_model(mag=mag, dist_rup=dist_rup, v_s30=400.0, mechanism="SS")
+    assert m._ln_dur.shape == (3, 4, 3)
+    assert m.duration.shape == (3, 4)
+    assert m.duration.D_5t95.shape == (3, 4)
+    assert m.std_err.D_5t95.shape == (3, 4)
+    expected = scalar_model(mag=7.5, dist_rup=20.0, v_s30=400.0, mechanism="SS")
+    assert m.duration.D_5t95[2, 1] == expected.duration.D_5t95
+
+
+def test_invalid_entries_use_default():
+    # As for scalar scenarios, invalid mechanisms use the unspecified coefficients and
+    # invalid regions use California
+    mechanism = np.array(["SS", "NS", "U", "RS"])
+    region = np.array(["japan", "mars", "california", "japan"])
+    with pytest.warns(UserWarning) as record:
+        m = AfshariStewart2016(
+            Scenario(
+                mag=np.full(4, 6.5),
+                dist_rup=20.0,
+                v_s30=300.0,
+                mechanism=mechanism,
+                region=region,
+                depth_1_0=0.5,
+            )
+        )
+    messages = [str(r.message) for r in record]
+    assert sum("mechanism has 1 of 4 values" in msg for msg in messages) == 1
+    assert sum("region has 1 of 4 values" in msg for msg in messages) == 1
+    expected = [
+        scalar_model(
+            mag=6.5,
+            dist_rup=20.0,
+            v_s30=300.0,
+            mechanism=mech,
+            region=reg,
+            depth_1_0=0.5,
+        )._ln_dur
+        for mech, reg in zip(mechanism, region)
+    ]
+    np.testing.assert_array_equal(m._ln_dur, expected)
+
+
+def test_calc_depth_1_0_arrays():
+    v_s30 = np.array([200.0, 400.0, 760.0, 1000.0])
+    region = np.array(["california", "japan", "global", "japan"])
+    actual = AfshariStewart2016.calc_depth_1_0(v_s30, region)
+    expected = [AfshariStewart2016.calc_depth_1_0(v, r) for v, r in zip(v_s30, region)]
+    np.testing.assert_array_equal(actual, expected)
+    # A scalar region with an array of velocities
+    np.testing.assert_array_equal(
+        AfshariStewart2016.calc_depth_1_0(v_s30, "japan"),
+        [AfshariStewart2016.calc_depth_1_0(v, "japan") for v in v_s30],
+    )
