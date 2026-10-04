@@ -10,7 +10,8 @@ class AfshariStewart2016(model.Model):
 
     The basin term uses the difference between `depth_1_0` and the average
     depth for the site's `v_s30`. The average depth uses the Japan relation for
-    ``region="japan"``, and the California relation otherwise.
+    ``region="japan"``, and the California relation otherwise. If `depth_1_0`
+    is *None* or NaN, no basin term is applied.
 
     The model is vectorized. Each scenario value (``mag``, ``dist_rup``,
     ``v_s30``, ``mechanism``, ``depth_1_0``, and ``region``) can be a scalar or
@@ -138,8 +139,11 @@ class AfshariStewart2016(model.Model):
             dz_1 = model.as_column(
                 1000 * (s.depth_1_0 - self.calc_depth_1_0(s.v_s30, s.region))
             )
-            # Same as `dz_1 if dz_1 <= dz_1ref else dz_1ref`
-            F_dz1 = c_5 * np.where(dz_1 <= dz_1ref, dz_1, dz_1ref)
+            # Same as `dz_1 if dz_1 <= dz_1ref else dz_1ref`. Unknown depths
+            # (NaN) have no basin term.
+            F_dz1 = np.where(
+                np.isnan(dz_1), 0.0, c_5 * np.where(dz_1 <= dz_1ref, dz_1, dz_1ref)
+            )
         else:
             F_dz1 = 0
         # site duration

@@ -374,3 +374,23 @@ def test_calc_depth_1_0_arrays():
         AfshariStewart2016.calc_depth_1_0(v_s30, "japan"),
         [AfshariStewart2016.calc_depth_1_0(v, "japan") for v in v_s30],
     )
+
+
+def test_nan_depth_1_0_has_no_basin_term():
+    # An unknown depth (NaN) gives the same durations as no depth (None)
+    kwds = dict(mag=6.5, dist_rup=20.0, v_s30=400.0, mechanism="SS")
+    expected = np.array(AfshariStewart2016(Scenario(**kwds))._ln_dur)
+    np.testing.assert_array_equal(
+        AfshariStewart2016(Scenario(depth_1_0=np.nan, **kwds))._ln_dur, expected
+    )
+
+    # In an array of scenarios, only the NaN entries have no basin term
+    depth_1_0 = np.array([np.nan, 0.3, 5.0])
+    m = AfshariStewart2016(Scenario(depth_1_0=depth_1_0, **kwds))
+    np.testing.assert_array_equal(m._ln_dur[0], expected)
+    for i in [1, 2]:
+        np.testing.assert_array_equal(
+            m._ln_dur[i],
+            AfshariStewart2016(Scenario(depth_1_0=depth_1_0[i], **kwds))._ln_dur,
+        )
+    assert np.all(m._ln_dur[2] > expected)

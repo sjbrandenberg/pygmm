@@ -70,6 +70,9 @@ title: History
   (Δc20 = 0) for `region="china"` because the region was compared with a list. It now uses the
   China coefficient (Δc20,CH), which increases the response at distances greater than 80 km
   (e.g., PGA by about 30% at 150 km for M6.5 and Vs30 = 760 m/s).
+- Fixed: Afshari and Stewart (2016) applied the maximum basin term (a depth differential of 200 m)
+  for `depth_1_0=np.nan`. An unknown depth (NaN) now has no basin term, as for `depth_1_0=None`, which
+  allows arrays of scenarios with some unknown depths.
 - Fixed: Afshari and Stewart (2016) passed the mechanism as the basin region, so the California
   relation for the mean depth to 1.0 km/s was always used. It now has an optional `region`
   parameter ("california", "global", or "japan"; default "california") and uses the Japan
