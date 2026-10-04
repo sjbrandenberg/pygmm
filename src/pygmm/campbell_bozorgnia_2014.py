@@ -286,12 +286,15 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
         # Fault dip term
         f_dip = c.c_19 * dip * np.clip(5.5 - mag, 0, 1)
 
-        # Anaelastic attenuation term. China uses the California and global
-        # coefficient, as in previous versions of pygmm.
-        dc_20 = np.where(
-            model.equals(region, "japan") | model.equals(region, "italy"),
-            c.dc_20jp,
-            c.dc_20ca,
+        # Anaelastic attenuation term
+        dc_20 = np.select(
+            [
+                model.equals(region, "japan") | model.equals(region, "italy"),
+                model.equals(region, "china"),
+            ],
+            [c.dc_20jp, c.dc_20ch],
+            # 'global', 'california'
+            default=c.dc_20ca,
         )
 
         f_atn = (c.c_20 + dc_20) * np.maximum(dist_rup - 80, 0)

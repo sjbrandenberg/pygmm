@@ -19,6 +19,31 @@ def test_depth_2_5():
     assert_allclose(CB14.calc_depth_2_5(600, "california", None), 0.7952589)
 
 
+@pytest.mark.parametrize("dist_rup", [50.0, 150.0])
+@pytest.mark.parametrize("vectorized", [False, True])
+def test_china_anelastic_attenuation(dist_rup, vectorized):
+    # China uses its own anelastic attenuation coefficient (dc_20ch) beyond
+    # 80 km, and the global coefficient (dc_20ca = 0) otherwise
+    regions = ["global", "china"]
+    kwds = dict(mag=6.5, dist_rup=dist_rup, dist_jb=dist_rup, dist_x=-dist_rup)
+    # The site term is linear above k_1, so it does not depend on the region
+    kwds.update(dip=90.0, v_s30=1300.0, mechanism="SS")
+    if vectorized:
+        m = CB14(pygmm.Scenario(region=np.array(regions), **kwds))
+        ln_resp_global, ln_resp_china = m._ln_resp
+    else:
+        ln_resp_global, ln_resp_china = (
+            CB14(pygmm.Scenario(region=region, **kwds))._ln_resp for region in regions
+        )
+    c = CB14.COEFF
+    assert np.any(c.dc_20ch != c.dc_20ca)
+    assert_allclose(
+        ln_resp_china - ln_resp_global,
+        (c.dc_20ch - c.dc_20ca) * max(dist_rup - 80, 0),
+        atol=1e-12,
+    )
+
+
 # Magnitudes cover the breakpoints of the magnitude, style of faulting,
 # hanging wall, hypocentral depth, dip, and standard deviation terms
 MAGS = [3.5, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.8]

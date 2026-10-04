@@ -41,6 +41,10 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: Campbell and Bozorgnia (2014) used the global anelastic attenuation coefficient
+  (Δc20 = 0) for `region="china"` because the region was compared with a list. It now uses the
+  China coefficient (Δc20,CH), which increases the response at distances greater than 80 km
+  (e.g., PGA by about 30% at 150 km for M6.5 and Vs30 = 760 m/s).
 - Fixed: Afshari and Stewart (2016) passed the mechanism as the basin region, so the California
   relation for the mean depth to 1.0 km/s was always used. It now has an optional `region`
   parameter ("california", "global", or "japan"; default "california") and uses the Japan
