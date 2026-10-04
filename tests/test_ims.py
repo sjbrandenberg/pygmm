@@ -63,12 +63,36 @@ def nga_west2_factory(model):
     return factory
 
 
+def nga_east(ims=None, n=300):
+    rng = np.random.default_rng(0)
+    s = pygmm.Scenario(
+        mag=rng.uniform(4.0, 8.2, n),
+        dist_rup=rng.uniform(0.0, 1000.0, n),
+        v_s30=rng.uniform(200.0, 3000.0, n),
+    )
+    return pygmm.NgaEastUsgs2017(s, ims=ims)
+
+
+def nga_sub(ims=None, n=300):
+    rng = np.random.default_rng(0)
+    s = pygmm.Scenario(
+        mag=rng.uniform(5.0, 9.5, n),
+        dist_rup=rng.uniform(0.0, 500.0, n),
+        v_s30=rng.uniform(150.0, 1000.0, n),
+        depth_hyp=rng.uniform(20.0, 120.0, n),
+        event_type=rng.choice(["interface", "intraslab"], n),
+    )
+    return pygmm.NgaSubductionUsgs2018(s, ims=ims)
+
+
 MODELS = {
     "idriss": (idriss, 22),
     "bssa14": (bssa14, 105),
     "ask14": (nga_west2_factory(pygmm.AbrahamsonSilvaKamai2014), 22),
     "cb14": (nga_west2_factory(pygmm.CampbellBozorgnia2014), 21),
     "cy14": (nga_west2_factory(pygmm.ChiouYoungs2014), 24),
+    "nga_east": (nga_east, 21),
+    "nga_sub": (nga_sub, 24),
 }
 
 

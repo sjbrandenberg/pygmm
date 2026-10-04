@@ -27,6 +27,8 @@ from .gulerce_abrahamson_2011 import GulerceAbrahamson2011
 from .idriss_2014 import Idriss2014
 from .kempton_stewart_2006 import KemptonStewart2006
 from .model import Scenario
+from .nga_east_usgs_2017 import NgaEastUsgs2017
+from .nga_subduction_usgs_2018 import NgaSubductionUsgs2018
 from .pezeshk_zandieh_tavakoli_2011 import PezeshkZandiehTavakoli2011
 from .stafford_2017 import Stafford2017
 from .tavakoli_pezeshk_2005 import TavakoliPezeshk05
@@ -50,6 +52,8 @@ __all__ = [
     "GulerceAbrahamson2011",
     "KemptonStewart2006",
     "Idriss2014",
+    "NgaEastUsgs2017",
+    "NgaSubductionUsgs2018",
     "PezeshkZandiehTavakoli2011",
     "TavakoliPezeshk05",
     "Stafford2017",
@@ -88,6 +92,8 @@ models = [
     GulerceAbrahamson2011,
     KemptonStewart2006,
     Idriss2014,
+    NgaEastUsgs2017,
+    NgaSubductionUsgs2018,
     PezeshkZandiehTavakoli2011,
     TavakoliPezeshk05,
     Stafford2017,

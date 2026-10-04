@@ -132,6 +132,22 @@ pygmm.model module
    :undoc-members:
    :show-inheritance:
 
+pygmm.nga\_east\_usgs\_2017 module
+----------------------------------
+
+.. automodule:: pygmm.nga_east_usgs_2017
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pygmm.nga\_subduction\_usgs\_2018 module
+----------------------------------------
+
+.. automodule:: pygmm.nga_subduction_usgs_2018
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pygmm.pezeshk\_zandieh\_tavakoli\_2011 module
 ---------------------------------------------
 

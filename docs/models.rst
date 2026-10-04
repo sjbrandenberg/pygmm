@@ -228,6 +228,8 @@ Detailed Model List
    gulerce_abrahamson_2011.GulerceAbrahamson2011
    hermkes_kuehn_riggelsen_2014.HermkesKuehnRiggelsen2014
    idriss_2014.Idriss2014
+   nga_east_usgs_2017.NgaEastUsgs2017
+   nga_subduction_usgs_2018.NgaSubductionUsgs2018
    pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
    tavakoli_pezeshk_2005.TavakoliPezeshk05
 
@@ -371,6 +373,8 @@ following models have been implemented.
     ~derras_bard_cotton_2014.DerrasBardCotton2014
     ~hermkes_kuehn_riggelsen_2014.HermkesKuehnRiggelsen2014
     ~idriss_2014.Idriss2014
+    ~nga_east_usgs_2017.NgaEastUsgs2017
+    ~nga_subduction_usgs_2018.NgaSubductionUsgs2018
     ~pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
     ~tavakoli_pezeshk_2005.TavakoliPezeshk05
 

@@ -3,6 +3,14 @@ title: History
 ---
 
 # Unreleased
+- Added: NGA-East for USGS (2017) model (`NgaEastUsgs2017`), following the USGS nshmp-haz
+  implementation: 17 weighted table-based median models for hard rock, the Stewart et al. (2017) and
+  Hashash et al. (2017) site amplification, and a 0.2 panel / 0.8 EPRI standard deviation. The
+  median and standard deviation are collapsed as in nshmp-haz, and reproduce its reference results.
+  The seed-model logic tree and the Gulf Coastal Plain variants are not included.
+- Added: NGA-Subduction USGS (2018) model (`NgaSubductionUsgs2018`), the USGS nshmp-haz version of
+  Abrahamson et al. (2018, PEER 2018/02) with Cascadia adjustments for interface and intraslab events
+  (`event_type`). `epistemic=False` gives the central branch (the nshmp-haz `*_NO_EPI` variants).
 - Changed: Idriss (2014) accepts arrays of scenario values (`mag`, `dist_rup`, `v_s30`, `mechanism`).
   Arrays of N scenarios give results with shape (N, periods), e.g., `pga` with shape (N,).
   Scalar scenarios give the same results as before.

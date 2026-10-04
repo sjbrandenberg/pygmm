@@ -81,6 +81,8 @@ Quick Navigation
            kempton_stewart_2006
            kishida_2017
            model
+           nga_east_usgs_2017
+           nga_subduction_usgs_2018
            pezeshk_zandieh_tavakoli_2011
            stafford_2017
            tavakoli_pezeshk_2005
