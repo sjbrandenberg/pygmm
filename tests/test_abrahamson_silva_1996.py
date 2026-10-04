@@ -27,7 +27,17 @@ def test_calc_duration(case):
 
     actual = m.interp(nias, stds)
 
-    assert_allclose(actual, case["durs"], atol=0.0001, rtol=0.01)
+    # The spreadsheet values are rounded
+    assert_allclose(actual, case["durs"], atol=0.0001, rtol=1e-4)
+
+
+@pytest.mark.parametrize("site_cond", ["soil", "rock"])
+def test_interp_matches_duration(site_cond):
+    # The 5 to 75% duration from interp() is the duration of the model
+    m = pygmm.AbrahamsonSilva1996(
+        pygmm.Scenario(mag=6.5, dist_rup=20.0, site_cond=site_cond)
+    )
+    assert_allclose(m.interp([0.75]), [m.duration], rtol=1e-12)
 
 
 # Tests of the vectorized model against scalar scenarios

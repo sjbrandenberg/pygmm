@@ -103,11 +103,14 @@ class AbrahamsonSilva1996(model.Model):
 
         is_soil = np.where(model.equals(s.site_cond, "soil"), 1, 0)
 
-        self._ln_dur = np.log(
+        # Natural log of the duration without the increment for the normalized
+        # Arias intensity, which is added for the 5 to 75% duration and by interp()
+        self._ln_dur_base = np.log(
             (stress_drop / moment) ** (-1 / 3) / (4.9e6 * 3.2)
             + 0.805 * is_soil
             + 0.063 * np.maximum(s.dist_rup - 10, 0)
-        ) + self.calc_ln_dur_incr(0.75)
+        )
+        self._ln_dur = self._ln_dur_base + self.calc_ln_dur_incr(0.75)
         self._std_err = 0.55
 
     @property
@@ -182,8 +185,8 @@ class AbrahamsonSilva1996(model.Model):
 
         ln_dur_incr = self.calc_ln_dur_incr(nias)
 
-        if np.ndim(self._ln_dur) == 0:
-            ln_dur = self._ln_dur + ln_dur_incr
+        if np.ndim(self._ln_dur_base) == 0:
+            ln_dur = self._ln_dur_base + ln_dur_incr
             if stds is not None:
                 std_errs = np.interp(nias, self.INTERP_NIAS, self.INTERP_STD_ERRS)
                 ln_dur = ln_dur + np.array(stds)[:, np.newaxis] * std_errs
@@ -192,7 +195,7 @@ class AbrahamsonSilva1996(model.Model):
         # Vectorized scenario: the axes of the scenarios are followed by the axes
         # of the standard deviations (if provided) and the normalized Arias
         # intensities
-        ln_dur = self._ln_dur
+        ln_dur = self._ln_dur_base
         if stds is None:
             ln_dur = np.reshape(ln_dur, ln_dur.shape + (1,) * nias.ndim)
             ln_dur = ln_dur + ln_dur_incr

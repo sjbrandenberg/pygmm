@@ -52,6 +52,9 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: `AbrahamsonSilva1996.interp` added the increment for the 5 to 75% duration twice, which
+  made the interpolated durations about 0.9% too large. `interp(0.75)` now equals `duration`, and
+  the results match the reference spreadsheet to within its rounding.
 - Fixed: Campbell and Bozorgnia (2014) used the global anelastic attenuation coefficient
   (Δc20 = 0) for `region="china"` because the region was compared with a list. It now uses the
   China coefficient (Δc20,CH), which increases the response at distances greater than 80 km
