@@ -34,7 +34,8 @@ class AbrahamsonGregorAddo2016(model.GroundMotionModel):
         is used for intraslab events and a period dependent value from 0.2 to
         -0.2 is used for interface events.
     adjust_c4 : float, optional
-        not used by the model.
+        adjustment to the finite-fault distance term (:math:`\\Delta C_4`,
+        km), which is added to :math:`C_4` (10 km). Default is 0.
     scale_atten : float, optional
         scale factor applied to the anelastic attenuation term. Default is 1.
     ims : str or sequence of str, optional
@@ -105,7 +106,8 @@ class AbrahamsonGregorAddo2016(model.GroundMotionModel):
             adjust_c1 (float or array_like, optional): adjustment to the
                 magnitude scaling break point. If *None* (default), the
                 adjustment depends on the event type.
-            adjust_c4 (float, optional): not used by the model.
+            adjust_c4 (float, optional): adjustment added to the
+                finite-fault distance term, C_4 (km).
             scale_atten (float, optional): scale factor applied to the
                 anelastic attenuation term.
             ims (str or sequence of str, optional): intensity measures to
@@ -147,6 +149,7 @@ class AbrahamsonGregorAddo2016(model.GroundMotionModel):
 
     @property
     def adjust_c4(self):
+        """Adjustment to the finite-fault distance term (:math:`\\Delta C_4`, km)."""
         return self._adjust_c4
 
     @property
@@ -232,7 +235,7 @@ class AbrahamsonGregorAddo2016(model.GroundMotionModel):
         dist = self._calc_dist(is_slab)
 
         path_atten = (c.t_2 + c.t_14 * f_event + c.t_3 * (mag - 7.8)) * np.log(
-            dist + c.c_4 * np.exp(c.t_9 * (mag - 6))
+            dist + (c.c_4 + self._adjust_c4) * np.exp(c.t_9 * (mag - 6))
         )
 
         ln_resp = (

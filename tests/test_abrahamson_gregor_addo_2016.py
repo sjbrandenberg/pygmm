@@ -374,3 +374,26 @@ def test_ln_pga(ims):
     m = AGA16(vector_scenario(), ims=ims)
     assert m.ln_pga.shape == (500,)
     np.testing.assert_array_equal(np.exp(m.ln_pga), m.pga)
+
+
+def test_adjust_c4_is_added_to_c4(monkeypatch):
+    s = Scenario(
+        mag=np.array([6.0, 7.5, 8.5]),
+        dist_rup=np.array([20.0, 60.0, 150.0]),
+        dist_hyp=np.array([60.0, 100.0, 200.0]),
+        depth_hyp=50.0,
+        v_s30=np.array([200.0, 400.0, 1000.0]),
+        event_type=np.array(["interface", "intraslab", "interface"]),
+        tectonic_region="forearc",
+    )
+    default = AGA16(s)
+    adjusted = AGA16(s, adjust_c4=5.0)
+    assert np.all(adjusted.spec_accels != default.spec_accels)
+
+    # Same as increasing C_4 in the coefficients
+    coeff = AGA16.COEFF.copy()
+    coeff.c_4 = coeff.c_4 + 5.0
+    monkeypatch.setattr(AGA16, "COEFF", coeff)
+    np.testing.assert_allclose(
+        adjusted._ln_resp, AGA16(s)._ln_resp, rtol=1e-12
+    )

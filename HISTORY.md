@@ -62,6 +62,9 @@ title: History
 - Fixed: `AbrahamsonSilva1996.interp` added the increment for the 5 to 75% duration twice, which
   made the interpolated durations about 0.9% too large. `interp(0.75)` now equals `duration`, and
   the results match the reference spreadsheet to within its rounding.
+- Fixed: the `adjust_c4` argument of Abrahamson, Gregor, and Addo (2016) was stored but not used. It
+  is now added to C_4 (10 km) in the finite-fault distance term. The default of 0 gives the same
+  results as before.
 - Fixed: Campbell and Bozorgnia (2014) did not set PSA at periods shorter than 0.25 s to PGA when
   it is less than PGA, as specified by the model. This increases the short-period PSA for sites with
   strong nonlinear site response, e.g., by up to about 40% at 0.05 to 0.075 s for Vs30 = 150 m/s.
