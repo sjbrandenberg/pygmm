@@ -304,3 +304,15 @@ def test_interp_last_axis_matches_numpy(periods):
     np.testing.assert_array_equal(
         interp_last_axis(periods, xp[rows], fp[0, rows]), expected[0]
     )
+
+
+@pytest.mark.parametrize("v_s30", [180.0, 300.0])
+def test_ab06_site_term_is_continuous(v_s30):
+    # The nonlinear site coefficient (Eq. 8 of Atkinson and Boore, 2006) is
+    # continuous at the velocity breakpoints
+    def calc(v):
+        return pygmm.AtkinsonBoore2006(
+            pygmm.Scenario(mag=7.0, dist_rup=10.0, v_s30=v)
+        ).spec_accels
+
+    np.testing.assert_allclose(calc(v_s30 - 1e-6), calc(v_s30 + 1e-6), rtol=1e-6)

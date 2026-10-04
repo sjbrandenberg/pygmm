@@ -52,6 +52,10 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: Atkinson and Boore (2006) left out the "+ b_2" in the nonlinear site coefficient for
+  180 < Vs30 <= 300 m/s (Eq. 8), so the site term was discontinuous at 180 and 300 m/s. This changes
+  the results for Vs30 in this range, e.g., PGA decreases by about 28% for M7 at 10 km with
+  Vs30 = 250 m/s.
 - Fixed: Pinilla-Ramos et al. (2023) had a0 = 1 instead of 0 for the 0.75 row of the conditional
   model, which doubled the durations from `duration_for_energy` for energies between about 0.725
   and 0.775 other than 0.75. These energies now give the D5-75 durations.

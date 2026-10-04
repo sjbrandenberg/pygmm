@@ -256,7 +256,7 @@ class AtkinsonBoore2006(model.GroundMotionModel):
             [v_s30 <= VS_1, v_s30 <= VS_2, v_s30 <= VS_REF],
             [
                 c.b_1,
-                (c.b_1 - c.b_2) * np.log(v_s30 / VS_2) / np.log(VS_1 / VS_2),
+                (c.b_1 - c.b_2) * np.log(v_s30 / VS_2) / np.log(VS_1 / VS_2) + c.b_2,
                 c.b_2 * np.log(v_s30 / VS_REF) / np.log(VS_2 / VS_REF),
             ],
             # Vs30 > VS_REF
