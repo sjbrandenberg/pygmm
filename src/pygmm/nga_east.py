@@ -378,6 +378,56 @@ def site_amp_factor(f_s, sigma_s, z_score):
     return np.where(f_s == 0.0, 1.0, factor)
 
 
+def site_amplified_resp(
+    c, terms, version, ln_resp_rock, ln_pga_rock, mu_adj=0.0, cpa_terms=None
+):
+    """Site-amplified linear response of one hard-rock median model.
+
+    As nshmp-lib ``NgaEast.NgaEast_2023.calc`` (and ``NgaEast_2018`` without the
+    adjustment and the coastal plain amplification): the adjustment of the
+    computed period is added to the hard-rock median and to the rock PGA of the
+    nonlinear site term, the site amplification is applied with the three-point
+    distribution, and the coastal plain amplification is added.
+
+    Parameters
+    ----------
+    c : :class:`pygmm.model.Coefficients`
+        coefficients of the computed periods
+    terms : :class:`SiteTerms`
+        site terms from :func:`site_terms`
+    version : str
+        model version: "2018", "2023", or "2026"
+    ln_resp_rock : array_like
+        natural log of the hard-rock median with periods along the last axis
+    ln_pga_rock : array_like
+        natural log of the hard-rock PGA (g) with the scenario shape (no period
+        axis)
+    mu_adj : array_like, optional
+        adjustment of the hard-rock median (:func:`median_adjustment`)
+    cpa_terms : tuple, optional
+        ln PSA ratio, site terms at the reference V_S30, and coastal plain taper
+        of the coastal plain amplification; *None* for no coastal plain
+        amplification
+
+    Returns
+    -------
+    resp : :class:`np.ndarray`
+        linear site-amplified response
+    """
+    ln_resp_rock = ln_resp_rock + mu_adj
+    # As in nshmp-lib, the adjustment of the computed period is applied
+    pga_rock = np.exp(model.as_column(ln_pga_rock) + mu_adj)
+    ln_ref = rock_pga_term(c.f3, pga_rock, version)
+    f_s, sigma_s = site_amp(terms, ln_ref)
+    if cpa_terms is not None:
+        f_cpa, terms_ref, z_scale_cpa = cpa_terms
+        # Site amplification at the reference V_S30 of the PSA ratios
+        f_s_ref, _ = site_amp(terms_ref, ln_ref, with_sigma=False)
+        ln_resp_rock = ln_resp_rock + (f_cpa - f_s_ref * z_scale_cpa)
+    z_score = SITE_AMP_OPTIONS[version]["z_score"]
+    return np.exp(ln_resp_rock) * site_amp_factor(f_s, sigma_s, z_score)
+
+
 def sigma_epri(c, mag):
     """Updated EPRI (2013) aleatory standard deviation (ln units).
 
@@ -470,7 +520,96 @@ def combined_sigma(c, mag, v_s30, sum_mean_wts=1.0):
     return np.sqrt(sum_mean_wts * var)
 
 
-class NgaEast(model.GroundMotionModel):
+class _NgaEastBase(model.GroundMotionModel):
+    """Periods, coefficients, and site terms of the nshmp-lib NGA-East models."""
+
+    #: Coefficients (sigma, site amplification, adjustments, and model weights)
+    COEFF = _load_coeffs()
+    PERIODS = COEFF["period"]
+
+    INDEX_PGV = NgaEastUsgs2017.INDEX_PGV
+    INDEX_PGA = NgaEastUsgs2017.INDEX_PGA
+    INDICES_PSA = NgaEastUsgs2017.INDICES_PSA
+
+    # Constraints of nshmp-lib (NgaEast.CONSTRAINTS and Site.ZSED_RANGE)
+    LIMITS = dict(
+        mag=(4.0, 8.2), dist_rup=(0.0, 1000.0), v_s30=(150.0, 3000.0), depth_sed=(0, 25)
+    )
+
+    PARAMS = [
+        model.NumericParameter("mag", True, 4.0, 8.2),
+        model.NumericParameter("dist_rup", True, 0.0, 1000.0),
+        model.NumericParameter("v_s30", True, 150.0, 3000.0),
+        model.NumericParameter("dist_jb", False, 0.0, 1500.0),
+        model.NumericParameter("depth_sed", False, 0.0, 25.0),
+    ]
+
+    @staticmethod
+    def _check_options(version, adjusted, cpa):
+        """Check the version and the adjusted and cpa options."""
+        version = str(version)
+        if version not in VERSIONS:
+            raise ValueError(
+                f"version must be one of {', '.join(VERSIONS)}, not {version!r}"
+            )
+        if version == "2018" and (adjusted or cpa):
+            raise ValueError(
+                "The adjusted and cpa options are not available for version 2018"
+            )
+        return version, bool(adjusted), bool(cpa)
+
+    def _coeffs(self):
+        return model.Coefficients(
+            **{
+                name: self._coeff_rows(self.COEFF[name])
+                for name in self.COEFF.dtype.names
+            }
+        )
+
+    def _depth_sed(self):
+        depth_sed = self._scenario.depth_sed
+        return np.nan if depth_sed is None else np.asarray(depth_sed, dtype=float)
+
+    def _site_setup(self, c):
+        """Site terms, median adjustment, and coastal plain amplification terms.
+
+        Returns
+        -------
+        terms : :class:`SiteTerms`
+            site terms at the scenario V_S30
+        mu_adj : :class:`np.ndarray` or float
+            adjustment of the hard-rock median (0 if not `adjusted`)
+        cpa_terms : tuple or None
+            terms of the coastal plain amplification for
+            :func:`site_amplified_resp` (*None* if not applied)
+        """
+        s = self._scenario
+        periods = self._coeff_rows(self.PERIODS)
+        version = self.version
+        v_s30 = model.as_column(np.asarray(s.v_s30, dtype=float))
+        terms = site_terms(c, periods, v_s30, version)
+
+        depth_sed = self._depth_sed()
+        z_scale = model.as_column(z_site_scale(depth_sed))
+        # Adjustment of the hard-rock median
+        mu_adj = median_adjustment(c, v_s30, z_scale) if self.adjusted else 0.0
+        # Coastal plain amplification
+        cpa_terms = None
+        if self.cpa and np.any(z_scale > 0):
+            if s.dist_jb is None:
+                raise ValueError("dist_jb is required for cpa=True with depth_sed")
+            on_cpa = z_scale > 0
+            dist_jb = np.asarray(s.dist_jb, dtype=float)
+            f_cpa = np.where(
+                on_cpa, cpa_ln_ratio(depth_sed, s.mag, dist_jb, self._indices), 0.0
+            )
+            terms_ref = site_terms(c, periods, VS_REF_CPA, version)
+            z_scale_cpa = np.where(on_cpa, z_scale, 0.0)
+            cpa_terms = (f_cpa, terms_ref, z_scale_cpa)
+        return terms, mu_adj, cpa_terms
+
+
+class NgaEast(_NgaEastBase):
     r"""NGA-East model as implemented in USGS nshmp-lib.
 
     The NGA-East ground motion model for central and eastern North America
@@ -538,10 +677,11 @@ class NgaEast(model.GroundMotionModel):
 
     ``adjusted=True`` and ``cpa=True`` can be combined, although nshmp-lib has
     no such ``Gmm``. The stable-crust logic tree of the current CONUS NSHM
-    (nshm-conus 6.2.0) gives weights of 1/3 to ``NGA_EAST_2026`` and
-    ``NGA_EAST_2026_ADJUSTED`` and 1/6 each to the corresponding seed model
-    logic trees (``NGA_EAST_SEEDS_2026`` and ``NGA_EAST_SEEDS_2026_ADJUSTED``),
-    which are not implemented here.
+    (nshm-conus 6.2.0) combines this model with the USGS seed model logic tree
+    (:class:`NgaEastSeeds`): ``NGA_EAST_2026`` and ``NGA_EAST_2026_ADJUSTED``
+    have weights of 1/3 each, and ``NGA_EAST_SEEDS_2026`` and
+    ``NGA_EAST_SEEDS_2026_ADJUSTED`` have weights of 1/6 each. The individual
+    seed models are :class:`NgaEastSeed`.
 
     nshmp-lib provides a logic tree of 34 ground motions: the 17 median models
     times two aleatory variability models, the updated EPRI (2013) model
@@ -644,14 +784,6 @@ class NgaEast(model.GroundMotionModel):
     NAME = "NGA-East (USGS nshmp-lib)"
     ABBREV = "NGAE"
 
-    #: Coefficients (sigma, site amplification, adjustments, and model weights)
-    COEFF = _load_coeffs()
-    PERIODS = COEFF["period"]
-
-    INDEX_PGV = NgaEastUsgs2017.INDEX_PGV
-    INDEX_PGA = NgaEastUsgs2017.INDEX_PGA
-    INDICES_PSA = NgaEastUsgs2017.INDICES_PSA
-
     #: Weights of the 17 median models, shape (periods, 17)
     WEIGHTS = NgaEastUsgs2017.WEIGHTS
 
@@ -666,19 +798,6 @@ class NgaEast(model.GroundMotionModel):
         "NGA_EAST_2026_CPA": dict(version="2026", cpa=True),
     }
 
-    # Constraints of nshmp-lib (NgaEast.CONSTRAINTS and Site.ZSED_RANGE)
-    LIMITS = dict(
-        mag=(4.0, 8.2), dist_rup=(0.0, 1000.0), v_s30=(150.0, 3000.0), depth_sed=(0, 25)
-    )
-
-    PARAMS = [
-        model.NumericParameter("mag", True, 4.0, 8.2),
-        model.NumericParameter("dist_rup", True, 0.0, 1000.0),
-        model.NumericParameter("v_s30", True, 150.0, 3000.0),
-        model.NumericParameter("dist_jb", False, 0.0, 1500.0),
-        model.NumericParameter("depth_sed", False, 0.0, 25.0),
-    ]
-
     def __init__(
         self,
         scenario: model.Scenario,
@@ -688,33 +807,12 @@ class NgaEast(model.GroundMotionModel):
         ims=None,
     ):
         """Initialize the model."""
-        version = str(version)
-        if version not in VERSIONS:
-            raise ValueError(
-                f"version must be one of {', '.join(VERSIONS)}, not {version!r}"
-            )
-        if version == "2018" and (adjusted or cpa):
-            raise ValueError(
-                "The adjusted and cpa options are not available for version 2018"
-            )
-        self.version = version
-        self.adjusted = bool(adjusted)
-        self.cpa = bool(cpa)
+        self.version, self.adjusted, self.cpa = self._check_options(
+            version, adjusted, cpa
+        )
         super().__init__(scenario, ims)
         self._ln_resp = self._calc_ln_resp()
         self._ln_std = self._calc_ln_std()
-
-    def _coeffs(self):
-        return model.Coefficients(
-            **{
-                name: self._coeff_rows(self.COEFF[name])
-                for name in self.COEFF.dtype.names
-            }
-        )
-
-    def _depth_sed(self):
-        depth_sed = self._scenario.depth_sed
-        return np.nan if depth_sed is None else np.asarray(depth_sed, dtype=float)
 
     def _calc_ln_resp(self) -> np.ndarray:
         """Calculate the natural logarithm of the response.
@@ -727,10 +825,8 @@ class NgaEast(model.GroundMotionModel):
         """
         s = self._scenario
         c = self._coeffs()
-        periods = self._coeff_rows(self.PERIODS)
         weights = self._coeff_rows(self.WEIGHTS)
         version = self.version
-        z_score = SITE_AMP_OPTIONS[version]["z_score"]
 
         mag, dist_rup = np.broadcast_arrays(
             np.asarray(s.mag, dtype=float), np.asarray(s.dist_rup, dtype=float)
@@ -741,47 +837,22 @@ class NgaEast(model.GroundMotionModel):
         tables = ln_tables if self._indices is None else ln_tables[:, :, self._indices]
         tables_pga = ln_tables[:, :, self.INDEX_PGA]
 
-        v_s30 = model.as_column(np.asarray(s.v_s30, dtype=float))
-        terms = site_terms(c, periods, v_s30, version)
-
-        depth_sed = self._depth_sed()
-        z_scale = model.as_column(z_site_scale(depth_sed))
-        # Adjustment of the hard-rock median
-        mu_adj = median_adjustment(c, v_s30, z_scale) if self.adjusted else 0.0
-        # Coastal plain amplification
-        apply_cpa = self.cpa and np.any(z_scale > 0)
-        if apply_cpa:
-            if s.dist_jb is None:
-                raise ValueError("dist_jb is required for cpa=True with depth_sed")
-            on_cpa = z_scale > 0
-            dist_jb = np.asarray(s.dist_jb, dtype=float)
-            f_cpa = np.where(
-                on_cpa, cpa_ln_ratio(depth_sed, s.mag, dist_jb, self._indices), 0.0
-            )
-            terms_ref = site_terms(c, periods, VS_REF_CPA, version)
-            z_scale_cpa = np.where(on_cpa, z_scale, 0.0)
+        terms, mu_adj, cpa_terms = self._site_setup(c)
 
         frac_r_col = model.as_column(frac_r)
         frac_m_col = model.as_column(frac_m)
         # Weighted sum of the linear response of the 17 models
         sum_resp = 0
         for i in range(len(tables)):
-            ln_resp_rock = (
-                NgaEastUsgs2017._interpolate(tables[i], index, frac_r_col, frac_m_col)
-                + mu_adj
+            ln_resp_rock = NgaEastUsgs2017._interpolate(
+                tables[i], index, frac_r_col, frac_m_col
             )
             ln_pga_rock = NgaEastUsgs2017._interpolate(
                 tables_pga[i], index, frac_r, frac_m
             )
-            # As in nshmp-lib, the adjustment of the computed period is applied
-            pga_rock = np.exp(model.as_column(ln_pga_rock) + mu_adj)
-            ln_ref = rock_pga_term(c.f3, pga_rock, version)
-            f_s, sigma_s = site_amp(terms, ln_ref)
-            if apply_cpa:
-                # Site amplification at the reference V_S30 of the PSA ratios
-                f_s_ref, _ = site_amp(terms_ref, ln_ref, with_sigma=False)
-                ln_resp_rock = ln_resp_rock + (f_cpa - f_s_ref * z_scale_cpa)
-            resp = np.exp(ln_resp_rock) * site_amp_factor(f_s, sigma_s, z_score)
+            resp = site_amplified_resp(
+                c, terms, version, ln_resp_rock, ln_pga_rock, mu_adj, cpa_terms
+            )
             sum_resp = sum_resp + resp * weights[:, i]
 
         return np.log(sum_resp)
@@ -801,4 +872,688 @@ class NgaEast(model.GroundMotionModel):
         v_s30 = model.as_column(np.asarray(s.v_s30, dtype=float))
         sum_wts = np.sum(self._coeff_rows(self.WEIGHTS), axis=1)
         ln_std = combined_sigma(c, mag, v_s30, sum_wts)
+        return np.broadcast_to(ln_std, np.shape(self._ln_resp)).copy()
+
+
+# NGA-East seed models
+
+#: Table-based NGA-East seed models (nshmp-lib ``GroundMotionTables``)
+SEED_TABLE_IDS = (
+    "1CCSP",
+    "1CVSP",
+    "2CCSP",
+    "2CVSP",
+    "B_a04",
+    "B_ab14",
+    "B_ab95",
+    "B_bca10d",
+    "B_bs11",
+    "B_sgd02",
+    "B20_ab14mod1",
+    "B20_ab14mod2",
+    "B20_bca10d",
+    "Frankel",
+    "Graizer",
+    "Graizer16",
+    "Graizer17",
+    "HA15",
+    "PEER_EX",
+    "PEER_GP",
+    "PZCT15_M1SS",
+    "PZCT15_M2ES",
+    "SP15",
+    "YA15",
+)
+#: Table-based seed models without PGV tables
+SEEDS_WITHOUT_PGV = (
+    "Graizer",
+    "Graizer16",
+    "Graizer17",
+    "PEER_EX",
+    "PEER_GP",
+    "PZCT15_M1SS",
+    "PZCT15_M2ES",
+)
+#: Seed models with a functional form: Pezeshk et al. (2018) and Shahjouei and
+#: Pezeshk (2016)
+SEED_FUNCTIONAL_IDS = ("PZCT18_M1SS", "PZCT18_M2ES", "SP16")
+#: All of the seed models, in the order of the nshmp-lib ``Gmm`` identifiers
+SEEDS = SEED_TABLE_IDS[:22] + SEED_FUNCTIONAL_IDS[:2] + ("SP15", "SP16", "YA15")
+
+
+@functools.lru_cache(maxsize=None)
+def _load_seed_tables():
+    """Load the median ground-motion tables of the table-based seed models.
+
+    Returns
+    -------
+    ln_tables : :class:`np.ndarray`
+        natural log of the ground motion with shape (seeds, distances ×
+        magnitudes, periods), with the seeds of :data:`SEED_TABLE_IDS`, the
+        distance-magnitude axis flattened with magnitude varying fastest, and the
+        periods of :class:`NgaEast`. Missing PGV tables are NaN.
+    """
+    fname = os.path.join(
+        os.path.dirname(__file__), "data", "nga_east_seeds-tables.csv.gz"
+    )
+    with gzip.open(fname, "rt") as fp:
+        lines = [ln for ln in fp if not ln.startswith("#")]
+    seeds = np.array([ln.split(",", 1)[0] for ln in lines[1:]])
+    values = np.loadtxt(lines[1:], delimiter=",", usecols=range(1, 14))
+    dists = NgaEastUsgs2017.TABLE_DISTS
+    n_dists = len(dists)
+    n_mags = len(NgaEastUsgs2017.TABLE_MAGS)
+    periods = NgaEastUsgs2017.PERIODS
+    tables = np.full((len(SEED_TABLE_IDS), len(periods), n_dists, n_mags), np.nan)
+    for k, seed in enumerate(SEED_TABLE_IDS):
+        rows = values[seeds == seed]
+        # Rows are ordered by period and distance
+        cols = np.searchsorted(periods, rows[::n_dists, 0])
+        assert np.array_equal(periods[cols], rows[::n_dists, 0])
+        assert np.array_equal(
+            rows[:, 1], np.tile(np.where(dists == 1e-5, 0.0, dists), len(cols))
+        )
+        assert len(cols) == len(periods) - (seed in SEEDS_WITHOUT_PGV)
+        tables[k, cols] = rows[:, 2:].reshape(len(cols), n_dists, n_mags)
+    tables = np.log(tables).reshape(len(SEED_TABLE_IDS), len(periods), -1)
+    return np.ascontiguousarray(tables.transpose(0, 2, 1))
+
+
+def _load_seed_weights():
+    """Seeds and weights of the USGS seed model logic tree."""
+    fname = os.path.join(os.path.dirname(__file__), "data", "nga_east_seed_weights.csv")
+    with open(fname) as fp:
+        rows = [ln.strip().split(",") for ln in fp if not ln.startswith("#")][1:]
+    return tuple(r[0] for r in rows), np.array([float(r[1]) for r in rows])
+
+
+def _load_pezeshk_coeffs(name):
+    """Coefficients of a functional seed model with the periods of NgaEast.
+
+    The Pezeshk et al. (2018) models do not provide PGV, which is NaN.
+    """
+    data = model.load_data_file(name, 2)
+    periods = NgaEastUsgs2017.PERIODS
+    if len(data) == len(periods) - 1:
+        # Add a NaN row for PGV
+        arrays = [np.r_[np.nan, data[n]] for n in data.dtype.names]
+        data = np.rec.fromarrays(arrays, names=data.dtype.names)
+        data["period"][0] = periods[0]
+    np.testing.assert_array_equal(data["period"], periods)
+    return data
+
+
+def pezeshk_ln_mean(c, mag, dist):
+    r"""Hard-rock median of Shahjouei and Pezeshk (2016) and Pezeshk et al. (2018).
+
+    The functional form is the same for both models (nshmp-lib
+    ``ShahjoueiPezeshk_2016.calcMean`` and ``PezeshkEtAl_2018.calcMean``):
+
+    .. math::
+
+        \log_{10} Y = c_1 + c_2 M + c_3 M^2 + (c_4 + c_5 M) \min(\log_{10} R,
+        \log_{10} 60) + (c_6 + c_7 M) \max(\min(\log_{10}(R / 60), \log_{10} 2), 0)
+        + (c_8 + c_9 M) \max(\log_{10}(R / 120), 0) + c_{10} R
+
+    with :math:`R = \sqrt{d^2 + c_{11}^2}`, where the distance :math:`d` is the
+    Joyner-Boore distance for Shahjouei and Pezeshk (2016) and the rupture
+    distance for Pezeshk et al. (2018). The models do not clamp the magnitude
+    or the distance.
+
+    Parameters
+    ----------
+    c : :class:`pygmm.model.Coefficients`
+        coefficients of the computed periods
+    mag, dist : array_like
+        moment magnitude and distance (km), with trailing axes for the periods
+
+    Returns
+    -------
+    ln_mean : :class:`np.ndarray`
+        natural log of the median (g, or cm/s for PGV)
+    """
+    r = np.sqrt(dist * dist + c.c11 * c.c11)
+    mu = (
+        c.c1
+        + c.c2 * mag
+        + c.c3 * mag * mag
+        + (c.c4 + c.c5 * mag) * np.minimum(np.log10(r), np.log10(60.0))
+        + (c.c6 + c.c7 * mag)
+        * np.maximum(np.minimum(np.log10(r / 60.0), np.log10(2.0)), 0.0)
+        + (c.c8 + c.c9 * mag) * np.maximum(np.log10(r / 120.0), 0.0)
+        + c.c10 * r
+    )
+    return mu * np.log(10.0)
+
+
+def sigma_sp16(c, periods, mag):
+    """Aleatory standard deviation of Shahjouei and Pezeshk (2016) (ln units).
+
+    Parameters
+    ----------
+    c : :class:`pygmm.model.Coefficients`
+        coefficients of the computed periods
+    periods : :class:`np.ndarray`
+        computed periods (s; -1 for PGV)
+    mag : array_like
+        moment magnitude with a trailing axis for the periods
+    """
+    psi = np.where(periods == -1, -3.054e-5, -6.898e-3)
+    sigma = np.where(mag <= 6.5, c.c12 * mag + c.c13, psi * mag + c.c14)
+    return np.sqrt(sigma * sigma + c.sigma_reg * c.sigma_reg)
+
+
+def sigma_pzct18(c, mag):
+    """Aleatory standard deviation of Pezeshk et al. (2018) (ln units).
+
+    Parameters
+    ----------
+    c : :class:`pygmm.model.Coefficients`
+        coefficients of the computed periods
+    mag : array_like
+        moment magnitude with a trailing axis for the periods
+    """
+    conds = [mag <= 4.5, mag <= 5.0, mag <= 6.5]
+    # Between-event (Equation 6) and within-event (Equation 7) terms
+    tau = np.select(
+        conds, [c.c12, c.c13 + c.c14 * mag, c.c15 + c.c16 * mag], c.c17 + c.c18 * mag
+    )
+    phi = np.select(
+        conds, [c.c19 + c.c20 * mag, c.c21 + c.c22 * mag, c.c23 + c.c24 * mag], c.c25
+    )
+    return np.sqrt(tau * tau + phi * phi)
+
+
+class _NgaEastSeedBase(_NgaEastBase):
+    """Shared parts of the seed models."""
+
+    #: Coefficients of Shahjouei and Pezeshk (2016), with the periods of NgaEast
+    COEFF_SP16 = _load_pezeshk_coeffs("shahjouei_pezeshk_2016.csv")
+    #: Coefficients of Pezeshk et al. (2018), with the periods of NgaEast
+    COEFF_PZCT18 = {
+        "PZCT18_M1SS": _load_pezeshk_coeffs("pezeshk_et_al_2018-m1ss.csv"),
+        "PZCT18_M2ES": _load_pezeshk_coeffs("pezeshk_et_al_2018-m2es.csv"),
+    }
+
+    def _skip_pgv(self):
+        """Do not compute the PGV row if PGV is not provided."""
+        if self.INDEX_PGV is None and self._indices is None:
+            self._indices = np.delete(
+                np.arange(len(self.PERIODS)), NgaEastUsgs2017.INDEX_PGV
+            )
+
+    def _coeff_set(self, coeff):
+        return model.Coefficients(
+            **{name: self._coeff_rows(coeff[name]) for name in coeff.dtype.names}
+        )
+
+    def _seed_ln_rock(self, seed, mag, dist_rup, dist_jb, position):
+        """Hard-rock median and PGA of a seed model.
+
+        Returns
+        -------
+        ln_resp_rock : :class:`np.ndarray`
+            natural log of the hard-rock median with periods along the last axis
+        ln_pga_rock : :class:`np.ndarray`
+            natural log of the hard-rock PGA (g) with the scenario shape
+        """
+        if seed in SEED_TABLE_IDS:
+            index, frac_r, frac_m = position
+            ln_tables = _load_seed_tables()[SEED_TABLE_IDS.index(seed)]
+            table = ln_tables if self._indices is None else ln_tables[:, self._indices]
+            ln_resp_rock = NgaEastUsgs2017._interpolate(
+                table, index, model.as_column(frac_r), model.as_column(frac_m)
+            )
+            ln_pga_rock = NgaEastUsgs2017._interpolate(
+                ln_tables[:, self.INDEX_PGA], index, frac_r, frac_m
+            )
+            return ln_resp_rock, ln_pga_rock
+
+        if seed == "SP16":
+            coeff, dist = self.COEFF_SP16, dist_jb
+        else:
+            coeff, dist = self.COEFF_PZCT18[seed], dist_rup
+        c_pga = model.Coefficients(
+            **{name: coeff[name][self.INDEX_PGA] for name in coeff.dtype.names}
+        )
+        ln_resp_rock = pezeshk_ln_mean(
+            self._coeff_set(coeff), model.as_column(mag), model.as_column(dist)
+        )
+        ln_pga_rock = pezeshk_ln_mean(c_pga, mag, dist)
+        return ln_resp_rock, ln_pga_rock
+
+    def _distances(self, needs_dist_jb):
+        """Broadcast magnitude, distances, and table position of the scenario."""
+        s = self._scenario
+        if needs_dist_jb and s.dist_jb is None:
+            raise ValueError(
+                "dist_jb is required by the Shahjouei and Pezeshk (2016) seed "
+                "model (SP16)"
+            )
+        mag, dist_rup, dist_jb = np.broadcast_arrays(
+            np.asarray(s.mag, dtype=float),
+            np.asarray(s.dist_rup, dtype=float),
+            np.asarray(np.nan if s.dist_jb is None else s.dist_jb, dtype=float),
+        )
+        position = NgaEastUsgs2017._table_position(dist_rup, mag)
+        return mag, dist_rup, dist_jb, position
+
+
+class NgaEastSeeds(_NgaEastSeedBase):
+    r"""USGS NGA-East seed model logic tree as implemented in USGS nshmp-lib.
+
+    The logic tree of 14 NGA-East seed models (Goulet et al., 2017, 2018) that
+    the U.S. Geological Survey uses as an alternative to the 17 NGA-East
+    (Sammons) median models of :class:`NgaEast` (nshmp-lib
+    ``NgaEast.UsgsSeeds_2018``, ``UsgsSeeds_2023``, and ``UsgsSeeds_2026``,
+    with the adjusted and coastal plain variants). The seed models and their
+    weights (nshmp-lib ``nga-east-seed-weights.dat``) are:
+
+    ===============  ========  =============================================
+    Seed             Weight    Model
+    ===============  ========  =============================================
+    ``B_bca10d``     0.06633   Boore (2015), stochastic method tables
+    ``B_ab95``       0.02211   Boore (2015), stochastic method tables
+    ``B_bs11``       0.02211   Boore (2015), stochastic method tables
+    ``2CCSP``        0.055275  Darragh et al. (2015)
+    ``2CVSP``        0.055275  Darragh et al. (2015)
+    ``Graizer16``    0.05445   Graizer (2016)
+    ``Graizer17``    0.05445   Graizer (2017)
+    ``PZCT15_M1SS``  0.05445   Pezeshk et al. (2015)
+    ``PZCT15_M2ES``  0.05445   Pezeshk et al. (2015)
+    ``SP16``         0.1089    Shahjouei and Pezeshk (2016)
+    ``YA15``         0.1122    Yenier and Atkinson (2015)
+    ``HA15``         0.1122    Hassani and Atkinson (2015)
+    ``Frankel``      0.1122    Frankel (2015)
+    ``PEER_GP``      0.1156    PEER (2015), Graves and Pitarka simulations
+    ===============  ========  =============================================
+
+    All seeds except SP16 are ground-motion tables for hard rock
+    (:math:`V_{S30}` = 3000 m/s) versus rupture distance and magnitude, with the
+    same grid and interpolation as the 17 NGA-East tables (:class:`NgaEast`).
+    SP16 is the Shahjouei and Pezeshk (2016) functional form
+    (:func:`pezeshk_ln_mean`), which uses the Joyner-Boore distance (and
+    nshmp-lib ignores its aleatory variability model). Each seed is site
+    amplified with its own hard-rock PGA as in :class:`NgaEast`:
+
+    - "2018" (``NGA_EAST_SEEDS_2018``): the site amplification of the 2018
+      version of :class:`NgaEast`.
+    - "2023" and "2026" (``NGA_EAST_SEEDS_2023`` and ``NGA_EAST_SEEDS_2026``):
+      the site amplification of the 2023 and 2026 versions of :class:`NgaEast`,
+      with the 2023 NSHM adjustment of the hard-rock median (``adjusted=True``)
+      and the Chapman and Guo (2021) coastal plain amplification
+      (``cpa=True``), which are applied to each seed as in :class:`NgaEast`.
+
+    The nshmp-lib ``Gmm`` identifiers are (see :attr:`GMM_IDS`):
+
+    ================================  =========================================
+    nshmp-lib ``Gmm``                 Options
+    ================================  =========================================
+    ``NGA_EAST_SEEDS_2018``           ``version="2018"``
+    ``NGA_EAST_SEEDS_2023``           ``version="2023"``
+    ``NGA_EAST_SEEDS_2023_ADJUSTED``  ``version="2023", adjusted=True``
+    ``NGA_EAST_SEEDS_2023_CPA``       ``version="2023", cpa=True``
+    ``NGA_EAST_SEEDS_2026``           ``version="2026"``
+    ``NGA_EAST_SEEDS_2026_ADJUSTED``  ``version="2026", adjusted=True``
+    ``NGA_EAST_SEEDS_2026_CPA``       ``version="2026", cpa=True``
+    ================================  =========================================
+
+    The median is the weighted mean of the linear ground motions of the 14 seed
+    models, and the standard deviation is the same as for :class:`NgaEast`: the
+    square root of the weighted mean of the variances of the updated EPRI
+    (2013) model (weight of 0.8) and the panel model (weight of 0.2). In the
+    current CONUS NSHM (nshm-conus 6.2.0), the stable-crust logic tree gives
+    weights of 1/6 each to ``NGA_EAST_SEEDS_2026`` and
+    ``NGA_EAST_SEEDS_2026_ADJUSTED`` and 1/3 each to ``NGA_EAST_2026`` and
+    ``NGA_EAST_2026_ADJUSTED`` (:class:`NgaEast`).
+
+    PGV is not provided: nshmp-lib computes the PGV of the seeds without PGV
+    tables (Graizer16, Graizer17, PEER_GP, PZCT15_M1SS, and PZCT15_M2ES) with
+    the conditional model of Abrahamson and Bhasin (2020)
+    (``UsgsPgvSupport.calcAB20Pgv``), which is not implemented here. The
+    individual seed models are :class:`NgaEastSeed`.
+
+    The model is vectorized. Each scenario value (``mag``, ``dist_rup``,
+    ``dist_jb``, ``v_s30``, and ``depth_sed``) can be a scalar or an array, and
+    the arrays are broadcast against each other. For a scalar scenario, the
+    response and standard deviation have one value per period, as in other
+    models. For arrays of N scenarios, they have shape (N, periods), so, for
+    example, ``pga`` has shape (N,) and ``spec_accels`` has shape (N, 21).
+
+    Parameters
+    ----------
+    scenario : :class:`pygmm.model.Scenario`
+        earthquake scenario. ``dist_jb`` is required (for SP16 and the coastal
+        plain amplification). ``depth_sed`` is the thickness of the Atlantic and
+        Gulf coastal plain sediments (km); *None* or NaN is a site off the
+        coastal plain.
+    version : str, optional
+        model version: "2018", "2023", or "2026" (default)
+    adjusted : bool, optional
+        apply the 2023 NSHM adjustment of the hard-rock median (not for "2018")
+    cpa : bool, optional
+        apply the Chapman and Guo (2021) coastal plain amplification (not for
+        "2018")
+    ims : str or sequence of str, optional
+        intensity measures to compute: "pga", spectral periods such as
+        "psa_1p000" (1.0 s), "psa_ngawest2_21" (the 21 NGA-West2 comparison
+        periods, which are all of the model's periods), and/or "psa_all" (all
+        21 periods). Computing only the needed intensity measures is much
+        faster for large vectorized scenarios. If *None* (default), all
+        intensity measures are computed.
+
+    References
+    ----------
+    Goulet, C., Bozorgnia, Y., Kuehn, N., Al Atik, L., Youngs, R., Graves, R.,
+    and Atkinson, G. (2017). NGA-East ground-motion models for the U.S.
+    Geological Survey national seismic hazard maps. PEER Report No. 2017/03,
+    Pacific Earthquake Engineering Research Center.
+
+    Goulet, C. A., Bozorgnia, Y., Abrahamson, N., et al. (2018). Central and
+    eastern North America ground-motion characterization: NGA-East final
+    report. PEER Report No. 2018/08, Pacific Earthquake Engineering Research
+    Center.
+
+    PEER (2015). NGA-East: Median ground-motion models for the central and
+    eastern North America region. PEER Report No. 2015/04, Pacific Earthquake
+    Engineering Research Center. (The seed models of Boore, Darragh et al.,
+    Frankel, Graizer, Hassani and Atkinson, Pezeshk et al., Shahjouei and
+    Pezeshk, Yenier and Atkinson, and the PEER simulations.)
+
+    Shahjouei, A., and Pezeshk, S. (2016). Alternative hybrid ground-motion
+    model for central and eastern North America using hybrid
+    simulations and NGA-West2 models. Bulletin of the Seismological Society of
+    America, 106(2), 734-754. https://doi.org/10.1785/0120140367
+
+    Chapman, M. C., and Guo, Z. (2021). A response spectral ratio model to
+    account for amplification and attenuation effects in the Atlantic and Gulf
+    coastal plain. Bulletin of the Seismological Society of America, 111(4),
+    1849-1867. https://doi.org/10.1785/0120200322
+
+    USGS nshmp-lib, ``gov.usgs.earthquake.nshmp.gmm.NgaEast`` and
+    ``ShahjoueiPezeshk_2016``, commit 44728a7d
+    (https://code.usgs.gov/ghsc/nshmp/nshmp-lib).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from pygmm.model import Scenario
+    >>> from pygmm.nga_east import NgaEastSeeds
+    >>> s = Scenario(mag=6.5, dist_rup=20.0, dist_jb=20.0, v_s30=760.0)
+    >>> m = NgaEastSeeds(s)
+    >>> round(float(m.pga), 4), round(float(m.ln_std_pga), 4)
+    (0.4337, 0.6472)
+    >>> round(float(NgaEastSeeds(s, adjusted=True).pga), 4)
+    0.4167
+    >>> s = Scenario(
+    ...     mag=np.array([5.0, 6.0, 7.0]), dist_rup=np.array([10.0, 50.0, 200.0]),
+    ...     dist_jb=np.array([8.0, 49.0, 200.0]), v_s30=400.0,
+    ...     depth_sed=np.array([np.nan, 0.5, 2.0]))
+    >>> NgaEastSeeds(s, version="2023", cpa=True, ims=["pga"]).pga.shape
+    (3,)
+    >>> m = NgaEastSeeds(s, **NgaEastSeeds.GMM_IDS["NGA_EAST_SEEDS_2026_ADJUSTED"])
+    >>> m.spec_accels.shape
+    (3, 21)
+
+    """
+
+    NAME = "NGA-East USGS seed model tree (nshmp-lib)"
+    ABBREV = "NGAESeeds"
+
+    INDEX_PGV = None
+
+    #: Seed models of the logic tree and their weights
+    SEED_WEIGHTS = dict(zip(*_load_seed_weights()))
+
+    #: Model options of the nshmp-lib ``Gmm`` identifiers
+    GMM_IDS = {
+        "NGA_EAST_SEEDS_2018": dict(version="2018"),
+        "NGA_EAST_SEEDS_2023": dict(version="2023"),
+        "NGA_EAST_SEEDS_2023_ADJUSTED": dict(version="2023", adjusted=True),
+        "NGA_EAST_SEEDS_2023_CPA": dict(version="2023", cpa=True),
+        "NGA_EAST_SEEDS_2026": dict(version="2026"),
+        "NGA_EAST_SEEDS_2026_ADJUSTED": dict(version="2026", adjusted=True),
+        "NGA_EAST_SEEDS_2026_CPA": dict(version="2026", cpa=True),
+    }
+
+    def __init__(
+        self,
+        scenario: model.Scenario,
+        version: str = "2026",
+        adjusted: bool = False,
+        cpa: bool = False,
+        ims=None,
+    ):
+        """Initialize the model."""
+        self.version, self.adjusted, self.cpa = self._check_options(
+            version, adjusted, cpa
+        )
+        super().__init__(scenario, ims)
+        self._skip_pgv()
+        self._ln_resp = self._calc_ln_resp()
+        self._ln_std = self._calc_ln_std()
+
+    def _calc_ln_resp(self) -> np.ndarray:
+        """Calculate the natural logarithm of the response.
+
+        Returns
+        -------
+        ln_resp : class:`np.array`:
+            natural log of the response
+
+        """
+        c = self._coeffs()
+        mag, dist_rup, dist_jb, position = self._distances(True)
+        terms, mu_adj, cpa_terms = self._site_setup(c)
+        # Weighted sum of the linear response of the 14 seed models
+        sum_resp = 0
+        for seed, weight in self.SEED_WEIGHTS.items():
+            ln_resp_rock, ln_pga_rock = self._seed_ln_rock(
+                seed, mag, dist_rup, dist_jb, position
+            )
+            resp = site_amplified_resp(
+                c, terms, self.version, ln_resp_rock, ln_pga_rock, mu_adj, cpa_terms
+            )
+            sum_resp = sum_resp + resp * weight
+        return np.log(sum_resp)
+
+    def _calc_ln_std(self) -> np.ndarray:
+        """Calculate the logarithmic standard deviation.
+
+        Returns
+        -------
+        ln_std : class:`np.array`:
+            natural log standard deviation
+
+        """
+        s = self._scenario
+        c = self._coeffs()
+        mag = model.as_column(np.asarray(s.mag, dtype=float))
+        v_s30 = model.as_column(np.asarray(s.v_s30, dtype=float))
+        sum_wts = sum(self.SEED_WEIGHTS.values())
+        ln_std = combined_sigma(c, mag, v_s30, sum_wts)
+        return np.broadcast_to(ln_std, np.shape(self._ln_resp)).copy()
+
+
+class NgaEastSeed(_NgaEastSeedBase):
+    r"""Individual NGA-East seed model as implemented in USGS nshmp-lib.
+
+    The 27 NGA-East seed models of nshmp-lib (``Gmm.NGA_EAST_SEED_*``), 14 of
+    which make up the USGS seed model logic tree (:class:`NgaEastSeeds`):
+
+    - The table-based seeds (nshmp-lib ``NgaEast.Seed``): 1CCSP, 1CVSP, 2CCSP,
+      and 2CVSP (Darragh et al., 2015); B_a04, B_ab14, B_ab95, B_bca10d,
+      B_bs11, and B_sgd02 (Boore, 2015); B20_ab14mod1, B20_ab14mod2, and
+      B20_bca10d (2020 updates by Boore); Frankel (Frankel, 2015); Graizer,
+      Graizer16, and Graizer17 (Graizer, 2015, 2016, 2017); HA15 (Hassani and
+      Atkinson, 2015); PEER_EX and PEER_GP (PEER, 2015, simulations); PZCT15_M1SS
+      and PZCT15_M2ES (Pezeshk et al., 2015); SP15 (Shahjouei and Pezeshk,
+      2015); and YA15 (Yenier and Atkinson, 2015). The hard-rock median
+      (:math:`V_{S30}` = 3000 m/s) is interpolated from the seed's
+      ground-motion table in rupture distance and magnitude as in
+      :class:`NgaEast`, and the standard deviation is that of :class:`NgaEast`
+      (the square root of 0.8 times the variance of the updated EPRI (2013)
+      model plus 0.2 times the variance of the panel model).
+    - SP16 (nshmp-lib ``ShahjoueiPezeshk_2016``): the Shahjouei and Pezeshk
+      (2016) functional form (:func:`pezeshk_ln_mean`) with the Joyner-Boore
+      distance and its own aleatory standard deviation.
+    - PZCT18_M1SS and PZCT18_M2ES (nshmp-lib ``PezeshkEtAl_2018``): the
+      Pezeshk et al. (2018) functional form with the rupture distance and its
+      own aleatory standard deviation (nshmp-lib uses the 0.08 s coefficients
+      for 0.075 s).
+
+    All of the seeds use the site amplification of the 2018 version of
+    :class:`NgaEast` (``SiteAmp_2018``) with their own hard-rock PGA. PGV is
+    provided for the seeds with PGV tables and SP16. nshmp-lib computes the PGV
+    of the seeds without PGV tables (Graizer, Graizer16, Graizer17, PEER_EX,
+    PEER_GP, PZCT15_M1SS, and PZCT15_M2ES) with the conditional model of
+    Abrahamson and Bhasin (2020) (``UsgsPgvSupport.calcAB20Pgv``), which is not
+    implemented here, and the Pezeshk et al. (2018) models do not provide PGV.
+
+    The nshmp-lib ``Gmm`` identifiers are ``NGA_EAST_SEED_`` followed by the
+    upper-case seed (see :attr:`GMM_IDS`), for example ``NGA_EAST_SEED_B_BCA10D``
+    for ``seed="B_bca10d"``.
+
+    The model is vectorized. Each scenario value (``mag``, ``dist_rup``,
+    ``dist_jb``, and ``v_s30``) can be a scalar or an array, and the arrays are
+    broadcast against each other. For a scalar scenario, the response and
+    standard deviation have one value per period, as in other models. For
+    arrays of N scenarios, they have shape (N, periods), so, for example,
+    ``pga`` has shape (N,) and ``spec_accels`` has shape (N, 21).
+
+    Parameters
+    ----------
+    scenario : :class:`pygmm.model.Scenario`
+        earthquake scenario. ``dist_jb`` is required for SP16.
+    seed : str, optional
+        seed model (see :data:`SEEDS`; not case sensitive). Default is
+        "B_bca10d".
+    ims : str or sequence of str, optional
+        intensity measures to compute: "pga", "pgv" (if provided), spectral
+        periods such as "psa_1p000" (1.0 s), "psa_ngawest2_21" (the 21
+        NGA-West2 comparison periods, which are all of the model's periods),
+        and/or "psa_all" (all 21 periods). Computing only the needed intensity
+        measures is much faster for large vectorized scenarios. If *None*
+        (default), all intensity measures are computed.
+
+    References
+    ----------
+    PEER (2015). NGA-East: Median ground-motion models for the central and
+    eastern North America region. PEER Report No. 2015/04, Pacific Earthquake
+    Engineering Research Center. (The seed models of Boore, Darragh et al.,
+    Frankel, Graizer, Hassani and Atkinson, Pezeshk et al., Shahjouei and
+    Pezeshk, Yenier and Atkinson, and the PEER simulations.)
+
+    Goulet, C., Bozorgnia, Y., Kuehn, N., Al Atik, L., Youngs, R., Graves, R.,
+    and Atkinson, G. (2017). NGA-East ground-motion models for the U.S.
+    Geological Survey national seismic hazard maps. PEER Report No. 2017/03,
+    Pacific Earthquake Engineering Research Center.
+
+    Shahjouei, A., and Pezeshk, S. (2016). Alternative hybrid ground-motion
+    model for central and eastern North America using hybrid
+    simulations and NGA-West2 models. Bulletin of the Seismological Society of
+    America, 106(2), 734-754. https://doi.org/10.1785/0120140367
+
+    Pezeshk, S., Zandieh, A., Campbell, K. W., and Tavakoli, B. (2018).
+    Ground-motion prediction equations for central and eastern North America
+    using the hybrid empirical method and NGA-West2 empirical ground-motion
+    models. Bulletin of the Seismological Society of America, 108(4),
+    2278-2304. https://doi.org/10.1785/0120170179
+
+    USGS nshmp-lib, ``gov.usgs.earthquake.nshmp.gmm.NgaEast``,
+    ``ShahjoueiPezeshk_2016``, and ``PezeshkEtAl_2018``, commit 44728a7d
+    (https://code.usgs.gov/ghsc/nshmp/nshmp-lib).
+
+    Examples
+    --------
+    >>> from pygmm.model import Scenario
+    >>> from pygmm.nga_east import NgaEastSeed
+    >>> s = Scenario(mag=6.5, dist_rup=20.0, dist_jb=20.0, v_s30=760.0)
+    >>> m = NgaEastSeed(s, seed="SP16")
+    >>> round(float(m.pga), 4), round(float(m.ln_std_pga), 4)
+    (0.3084, 0.6259)
+    >>> m = NgaEastSeed(s, **NgaEastSeed.GMM_IDS["NGA_EAST_SEED_PZCT18_M2ES"])
+    >>> m.seed, m.spec_accels.shape
+    ('PZCT18_M2ES', (21,))
+
+    """
+
+    NAME = "NGA-East seed model (nshmp-lib)"
+    ABBREV = "NGAESeed"
+
+    #: Seed models
+    SEEDS = SEEDS
+
+    #: Model options of the nshmp-lib ``Gmm`` identifiers
+    GMM_IDS = {"NGA_EAST_SEED_" + seed.upper(): dict(seed=seed) for seed in SEEDS}
+
+    # Constraints of nshmp-lib (NgaEast.CONSTRAINTS)
+    LIMITS = dict(mag=(4.0, 8.2), dist_rup=(0.0, 1000.0), v_s30=(150.0, 3000.0))
+
+    PARAMS = [
+        model.NumericParameter("mag", True, 4.0, 8.2),
+        model.NumericParameter("dist_rup", True, 0.0, 1000.0),
+        model.NumericParameter("v_s30", True, 150.0, 3000.0),
+        model.NumericParameter("dist_jb", False, 0.0, 1000.0),
+    ]
+
+    def __init__(self, scenario: model.Scenario, seed: str = "B_bca10d", ims=None):
+        """Initialize the model."""
+        seeds = {s.lower(): s for s in self.SEEDS}
+        try:
+            self.seed = seeds[str(seed).lower()]
+        except KeyError:
+            raise ValueError(
+                f"seed must be one of {', '.join(self.SEEDS)}, not {seed!r}"
+            ) from None
+        # The individual seeds use the 2018 site amplification
+        self.version, self.adjusted, self.cpa = "2018", False, False
+        if self.seed in SEEDS_WITHOUT_PGV or self.seed.startswith("PZCT18"):
+            self.INDEX_PGV = None
+        super().__init__(scenario, ims)
+        self._skip_pgv()
+        self._ln_resp = self._calc_ln_resp()
+        self._ln_std = self._calc_ln_std()
+
+    def _depth_sed(self):
+        return np.nan
+
+    def _calc_ln_resp(self) -> np.ndarray:
+        """Calculate the natural logarithm of the response.
+
+        Returns
+        -------
+        ln_resp : class:`np.array`:
+            natural log of the response
+
+        """
+        c = self._coeffs()
+        mag, dist_rup, dist_jb, position = self._distances(self.seed == "SP16")
+        terms, _, _ = self._site_setup(c)
+        ln_resp_rock, ln_pga_rock = self._seed_ln_rock(
+            self.seed, mag, dist_rup, dist_jb, position
+        )
+        return np.log(
+            site_amplified_resp(c, terms, self.version, ln_resp_rock, ln_pga_rock)
+        )
+
+    def _calc_ln_std(self) -> np.ndarray:
+        """Calculate the logarithmic standard deviation.
+
+        Returns
+        -------
+        ln_std : class:`np.array`:
+            natural log standard deviation
+
+        """
+        s = self._scenario
+        mag = model.as_column(np.asarray(s.mag, dtype=float))
+        if self.seed == "SP16":
+            c = self._coeff_set(self.COEFF_SP16)
+            ln_std = sigma_sp16(c, self._coeff_rows(self.PERIODS), mag)
+        elif self.seed in self.COEFF_PZCT18:
+            ln_std = sigma_pzct18(self._coeff_set(self.COEFF_PZCT18[self.seed]), mag)
+        else:
+            v_s30 = model.as_column(np.asarray(s.v_s30, dtype=float))
+            ln_std = combined_sigma(self._coeffs(), mag, v_s30)
         return np.broadcast_to(ln_std, np.shape(self._ln_resp)).copy()
