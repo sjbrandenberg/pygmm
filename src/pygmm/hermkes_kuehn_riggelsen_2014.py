@@ -3,6 +3,7 @@
 
 import logging
 import pathlib
+import zipfile
 
 import numpy as np
 from scipy.interpolate import NearestNDInterpolator
@@ -15,22 +16,33 @@ fname_data = pathlib.Path(__file__).parent.joinpath(
     "data", "hermkes_kuehn_riggelsen_2014.npz"
 )
 
-if not fname_data.exists():
-    # Download the model data if not found.
+if not zipfile.is_zipfile(fname_data):
+    # Download the model data if it is not found. The model data (164 MB) is not
+    # included in the package, and a clone without Git LFS has a small pointer
+    # file instead of the data.
     import urllib.request
 
+    # dl=1 downloads the file; dl=0 returns the Dropbox web page
     url = (
         "https://www.dropbox.com/s/1tu9ss1s3inctej/"
-        "hermkes_kuehn_riggelsen_2014.npz?dl=0"
+        "hermkes_kuehn_riggelsen_2014.npz?dl=1"
     )
 
+    # Download to a temporary file, so that a failed download does not leave a
+    # file that is not the model data
+    fname_tmp = fname_data.with_suffix(".npz.download")
     try:
-        urllib.request.urlretrieve(url, str(fname_data))
-    except urllib.request.URLError:
+        urllib.request.urlretrieve(url, str(fname_tmp))
+        if not zipfile.is_zipfile(fname_tmp):
+            raise ValueError("the downloaded file is not the model data")
+        fname_tmp.replace(fname_data)
+    except (OSError, ValueError) as error:
+        fname_tmp.unlink(missing_ok=True)
         logging.critical(
             "Hermkes, Kuehn, and Riggelsen (2013) model data required, "
-            "which cannot be downloaded. Download the file from %s"
+            "which cannot be downloaded (%s). Download the file from %s "
             "to this location: %s",
+            error,
             url,
             fname_data,
         )

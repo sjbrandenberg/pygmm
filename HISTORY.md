@@ -77,6 +77,11 @@ title: History
   it is less than PGA, as specified by the model. This increases the short-period PSA for sites with
   strong nonlinear site response, e.g., by up to about 40% at 0.05 to 0.075 s for Vs30 = 150 m/s.
   The standard deviations are unchanged.
+- Fixed: the Hermkes, Kuehn, and Riggelsen (2014) model data in the repository was a Dropbox web page
+  instead of the model data, because the download URL used `dl=0`. The data (164 MB, Git LFS) is
+  restored, the download uses `dl=1` and checks that the downloaded file is the model data, and a
+  Git LFS pointer file (a clone without Git LFS) is replaced by the download. The data is not
+  included in the package and is downloaded when the model is first imported.
 - Fixed: Campbell and Bozorgnia (2014) used the global anelastic attenuation coefficient
   (Δc20 = 0) for `region="china"` because the region was compared with a list. It now uses the
   China coefficient (Δc20,CH), which increases the response at distances greater than 80 km
