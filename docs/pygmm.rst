@@ -172,6 +172,14 @@ pygmm.nga\_subduction\_usgs\_2018 module
    :undoc-members:
    :show-inheritance:
 
+pygmm.nga\_west2\_nshmp module
+-------------------------------
+
+.. automodule:: pygmm.nga_west2_nshmp
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pygmm.parker\_et\_al\_2020 module
 ---------------------------------
 

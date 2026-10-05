@@ -3,6 +3,19 @@ title: History
 ---
 
 # Unreleased
+- Added: the USGS nshmp-lib versions of the NGA-West2 models used by the NSHM:
+  `AbrahamsonSilvaKamai2014Nshmp`, `BooreStewartSeyhanAtkinson2014Nshmp`,
+  `CampbellBozorgnia2014Nshmp`, `ChiouYoungs2014Nshmp`, and `Idriss2014Nshmp` (module
+  `nga_west2_nshmp`), with the `epistemic` (USGS NGA-West2 epistemic branches, collapsed as in
+  nshmp-lib), `basin` (USGS deep basin scaling), `cybershake` (2023 NSHM CyberShake basin terms),
+  `prvi` (2025 PRVI coefficients), and `vs30_measured` options that select the nshmp-lib `Gmm`
+  variants (`GMM_IDS`: `ASK_14`, `_BASE`, `_BASIN`, `_CYBERSHAKE`, `_VS30_MEASURED`, `_PRVI`,
+  etc.), and `NgaWest2NshmpTree`, the 2023 CONUS NSHM active crust logic trees
+  (`TOTAL_TREE_CONUS_ACTIVE_CRUST_2023`, the current NSHM tree of the four `_BASIN` models, and the
+  Los Angeles and San Francisco trees). The models reproduce the nshmp-lib reference results. The
+  style of faulting is given by `mechanism` (see `mechanism_from_rake`), `width` can be computed from
+  `depth_bor`, and `depth_hyp` (CB14) from the rupture geometry as in nshmp-lib. The published
+  NGA-West2 models are unchanged.
 - Added: `NgaEastSeeds`, the USGS NGA-East seed model logic tree of nshmp-lib (14 weighted seed
   models; `NGA_EAST_SEEDS_2018`, `_2023`, and `_2026` with the `adjusted` and `cpa` variants), which
   the current CONUS NSHM combines with `NgaEast` for stable crust, and `NgaEastSeed`, the 27

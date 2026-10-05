@@ -104,6 +104,31 @@ def nga_sub_final(model, **options):
     return factory
 
 
+def nga_west2_nshmp(model, **options):
+    def factory(ims=None, n=300):
+        rng = np.random.default_rng(0)
+        dist_jb = rng.uniform(0.0, 200.0, n)
+        depth_tor = rng.uniform(0.0, 10.0, n)
+        s = pygmm.Scenario(
+            mag=rng.uniform(5.0, 8.0, n),
+            dist_jb=dist_jb,
+            dist_rup=np.hypot(dist_jb, depth_tor),
+            dist_x=rng.choice([-1.0, 1.0], n) * dist_jb,
+            dip=rng.choice([45.0, 90.0], n),
+            depth_tor=depth_tor,
+            depth_bor=depth_tor + rng.uniform(5.0, 15.0, n),
+            mechanism=rng.choice(["U", "SS", "NS", "RS"], n),
+            v_s30=rng.uniform(180.0, 1300.0, n),
+            depth_1_0=rng.choice([np.nan, 0.2, 0.6], n),
+            depth_2_5=rng.choice([np.nan, 1.0, 4.0], n),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return model(s, ims=ims, **options)
+
+    return factory
+
+
 def nga_east_2026(ims=None, n=300):
     rng = np.random.default_rng(0)
     s = pygmm.Scenario(
@@ -150,6 +175,21 @@ MODELS = {
     "ag20": (nga_sub_final(pygmm.AbrahamsonGulerce2020, basin=True), 21),
     "kbcg20": (nga_sub_final(pygmm.KuehnEtAl2020, basin=True), 21),
     "psbah20": (nga_sub_final(pygmm.ParkerEtAl2020, basin=True), 21),
+    "ask14_nshmp": (
+        nga_west2_nshmp(pygmm.AbrahamsonSilvaKamai2014Nshmp, basin=True),
+        21,
+    ),
+    "bssa14_nshmp": (
+        nga_west2_nshmp(pygmm.BooreStewartSeyhanAtkinson2014Nshmp, basin=True),
+        21,
+    ),
+    "cb14_nshmp": (nga_west2_nshmp(pygmm.CampbellBozorgnia2014Nshmp, basin=True), 21),
+    "cy14_nshmp": (nga_west2_nshmp(pygmm.ChiouYoungs2014Nshmp, basin=True), 21),
+    "idriss14_nshmp": (nga_west2_nshmp(pygmm.Idriss2014Nshmp), 21),
+    "ngaw2_nshmp_tree": (
+        nga_west2_nshmp(pygmm.NgaWest2NshmpTree, tree="los_angeles"),
+        21,
+    ),
 }
 
 

@@ -34,6 +34,14 @@ from .model import Scenario
 from .nga_east import NgaEast, NgaEastSeed, NgaEastSeeds
 from .nga_east_usgs_2017 import NgaEastUsgs2017
 from .nga_subduction_usgs_2018 import NgaSubductionUsgs2018
+from .nga_west2_nshmp import (
+    AbrahamsonSilvaKamai2014Nshmp,
+    BooreStewartSeyhanAtkinson2014Nshmp,
+    CampbellBozorgnia2014Nshmp,
+    ChiouYoungs2014Nshmp,
+    Idriss2014Nshmp,
+    NgaWest2NshmpTree,
+)
 from .parker_et_al_2020 import ParkerEtAl2020
 from .pezeshk_zandieh_tavakoli_2011 import PezeshkZandiehTavakoli2011
 from .stafford_2017 import Stafford2017
@@ -67,6 +75,12 @@ __all__ = [
     "NgaEastSeeds",
     "NgaEastUsgs2017",
     "NgaSubductionUsgs2018",
+    "AbrahamsonSilvaKamai2014Nshmp",
+    "BooreStewartSeyhanAtkinson2014Nshmp",
+    "CampbellBozorgnia2014Nshmp",
+    "ChiouYoungs2014Nshmp",
+    "Idriss2014Nshmp",
+    "NgaWest2NshmpTree",
     "ParkerEtAl2020",
     "PezeshkZandiehTavakoli2011",
     "TavakoliPezeshk05",
@@ -111,6 +125,12 @@ models = [
     NgaEastSeeds,
     NgaEastUsgs2017,
     NgaSubductionUsgs2018,
+    AbrahamsonSilvaKamai2014Nshmp,
+    BooreStewartSeyhanAtkinson2014Nshmp,
+    CampbellBozorgnia2014Nshmp,
+    ChiouYoungs2014Nshmp,
+    Idriss2014Nshmp,
+    NgaWest2NshmpTree,
     AbrahamsonGulerce2020,
     KuehnEtAl2020,
     ParkerEtAl2020,

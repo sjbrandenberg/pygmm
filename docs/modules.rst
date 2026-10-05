@@ -86,6 +86,7 @@ Quick Navigation
            nga_east
            nga_east_usgs_2017
            nga_subduction_usgs_2018
+           nga_west2_nshmp
            parker_et_al_2020
            pezeshk_zandieh_tavakoli_2011
            stafford_2017

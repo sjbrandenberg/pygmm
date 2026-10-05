@@ -243,6 +243,12 @@ Detailed Model List
    nga_east.NgaEastSeed
    nga_east_usgs_2017.NgaEastUsgs2017
    nga_subduction_usgs_2018.NgaSubductionUsgs2018
+   nga_west2_nshmp.AbrahamsonSilvaKamai2014Nshmp
+   nga_west2_nshmp.BooreStewartSeyhanAtkinson2014Nshmp
+   nga_west2_nshmp.CampbellBozorgnia2014Nshmp
+   nga_west2_nshmp.ChiouYoungs2014Nshmp
+   nga_west2_nshmp.Idriss2014Nshmp
+   nga_west2_nshmp.NgaWest2NshmpTree
    kuehn_et_al_2020.KuehnEtAl2020
    parker_et_al_2020.ParkerEtAl2020
    pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
@@ -396,6 +402,12 @@ following models have been implemented.
     ~nga_east.NgaEastSeed
     ~nga_east_usgs_2017.NgaEastUsgs2017
     ~nga_subduction_usgs_2018.NgaSubductionUsgs2018
+    ~nga_west2_nshmp.AbrahamsonSilvaKamai2014Nshmp
+    ~nga_west2_nshmp.BooreStewartSeyhanAtkinson2014Nshmp
+    ~nga_west2_nshmp.CampbellBozorgnia2014Nshmp
+    ~nga_west2_nshmp.ChiouYoungs2014Nshmp
+    ~nga_west2_nshmp.Idriss2014Nshmp
+    ~nga_west2_nshmp.NgaWest2NshmpTree
     ~kuehn_et_al_2020.KuehnEtAl2020
     ~parker_et_al_2020.ParkerEtAl2020
     ~pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
