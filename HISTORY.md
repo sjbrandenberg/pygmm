@@ -98,8 +98,8 @@ title: History
   Japan region. It now uses the Japan relation, which changes the basin term at periods of 0.65 s
   and longer for `region="japan"` with `depth_1_0` specified.
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
-- Fixed: the warning for a scalar value above a parameter's recommended limit showed
-  "{self.max}" instead of the limit.
+- Fixed: the warnings for a scalar value outside of a parameter's recommended limits showed
+  "{self.min}" or "{self.max}" instead of the limit.
 - Fixed: Pezeshk et al. (2011) used the standard deviation in log10 units as a natural log standard
   deviation. It is now converted to natural log units (multiplied by ln(10)), as in OpenQuake,
   e.g., 0.58 instead of 0.25 for PGA at M6.

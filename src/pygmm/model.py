@@ -701,7 +701,7 @@ class NumericParameter(Parameter):
             if self.min is not None and value < self.min:
                 warnings.warn(
                     f"{self.name} ({value}) "
-                    "is less than the recommended limit ({self.min}).",
+                    f"is less than the recommended limit ({self.min}).",
                     UserWarning,
                     stacklevel=2,
                 )
