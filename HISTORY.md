@@ -77,6 +77,11 @@ title: History
   180 < Vs30 <= 300 m/s (Eq. 8), so the site term was discontinuous at 180 and 300 m/s. This changes
   the results for Vs30 in this range, e.g., PGA decreases by about 28% for M7 at 10 km with
   Vs30 = 250 m/s.
+- Fixed: `PinillaRamosEtAl2024.d5x_median` scaled the D5-75 median by approximate factors (e.g.,
+  0.25 for D5-10 and 1.80 for D5-95), and `d5x_sigma` returned the D5-75 standard deviation for all
+  thresholds. Both now use the conditional model of `duration_for_energy`. For example, D5-10 is
+  about 4% of D5-75 instead of 25%, and D5-95 is about 2.0 to 2.6 times D5-75 instead of 1.8.
+  Thresholds from "D5-10" to "D5-95" in steps of 5% are supported.
 - Fixed: Pinilla-Ramos et al. (2023) had a0 = 1 instead of 0 for the 0.75 row of the conditional
   model, which doubled the durations from `duration_for_energy` for energies between about 0.725
   and 0.775 other than 0.75. These energies now give the D5-75 durations.

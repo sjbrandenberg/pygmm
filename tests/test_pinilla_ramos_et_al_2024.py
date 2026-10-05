@@ -697,3 +697,36 @@ def test_duration_model_broadcasts():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize("event_type,region", [("interface", "Japan"), ("slab", "Taiwan")])
+@pytest.mark.parametrize("threshold", ["D5-10", "D5-50", "D5-75", "D5-95"])
+def test_d5x_matches_duration_for_energy(event_type, region, threshold):
+    # d5x_median and d5x_sigma use the conditional model, like duration_for_energy
+    m = PinillaRamosEtAl2024(
+        Scenario(
+            mag=np.array([5.5, 7.0, 8.0]),
+            dist_rup=np.array([20.0, 100.0, 300.0]),
+            v_s30=np.array([200.0, 400.0, 1000.0]),
+            region=region,
+            event_type=event_type,
+        )
+    )
+    energy = int(threshold[3:]) / 100
+    median, plus, _ = m.duration_for_energy(energy)
+    n = 0.15 if event_type == "interface" else 0.25
+    np.testing.assert_array_equal(m.d5x_median(threshold), median)
+    np.testing.assert_allclose(
+        (m.d5x_median(threshold) ** n + m.d5x_sigma(threshold)) ** (1 / n),
+        plus,
+        rtol=1e-12,
+    )
+
+
+@pytest.mark.parametrize("threshold", ["D5-99", "D5-12", "D5-", "5-95", 95])
+def test_d5x_unsupported_thresholds_raise(threshold):
+    m = PinillaRamosEtAl2024(
+        Scenario(mag=7.0, dist_rup=100.0, v_s30=400.0, region="Japan", event_type="interface")
+    )
+    with pytest.raises(ValueError, match="Unsupported energy threshold"):
+        m.d5x_median(threshold)

@@ -272,56 +272,56 @@ class PinillaRamosEtAl2024(model.Model):
     def d5x_median(self, energy_threshold: str) -> ArrayLike:
         """Calculate median duration for specified energy threshold.
 
+        The median is computed with the conditional model, as for
+        :meth:`duration_for_energy`.
+
         Parameters
         ----------
         energy_threshold : str
-            Energy threshold (e.g., "D5-10", "D5-95")
+            Energy threshold (e.g., "D5-10", "D5-95"), from "D5-10" to "D5-95"
+            in steps of 5%.
 
         Returns
         -------
         float or array_like
             Median duration in seconds, with the scenario shape
         """
-        # Convert D5-75 to other thresholds using scaling relationships
-        d575_med = self.d575_median
-
-        # Scaling factors from paper (approximate)
-        scaling_factors = {
-            "D5-10": 0.25,
-            "D5-20": 0.35,
-            "D5-30": 0.50,
-            "D5-40": 0.65,
-            "D5-50": 0.75,
-            "D5-60": 0.85,
-            "D5-70": 0.95,
-            "D5-75": 1.00,  # Reference
-            "D5-80": 1.10,
-            "D5-85": 1.25,
-            "D5-90": 1.45,
-            "D5-95": 1.80,
-        }
-
-        if energy_threshold not in scaling_factors:
-            raise ValueError(f"Unsupported energy threshold: {energy_threshold}")
-
-        return d575_med * scaling_factors[energy_threshold]
+        median, _ = self._calc_d5x(self._parse_energy_threshold(energy_threshold))
+        return self._output(median)
 
     def d5x_sigma(self, energy_threshold: str) -> ArrayLike:
         """Calculate sigma for specified energy threshold.
 
+        The standard deviation is computed with the conditional model, as for
+        :meth:`duration_for_energy`, in the same units as :attr:`d575_sigma`.
+
         Parameters
         ----------
         energy_threshold : str
-            Energy threshold (e.g., "D5-10", "D5-95")
+            Energy threshold (e.g., "D5-10", "D5-95"), from "D5-10" to "D5-95"
+            in steps of 5%.
 
         Returns
         -------
         float or array_like
-            Standard deviation of logarithmic duration, with the scenario shape
+            Standard deviation of the duration, with the scenario shape
         """
-        # For simplicity, use same sigma as D5-75
-        # Could implement threshold-specific sigmas if data available
-        return self.d575_sigma
+        _, sigma = self._calc_d5x(self._parse_energy_threshold(energy_threshold))
+        return self._output(sigma)
+
+    def _parse_energy_threshold(self, energy_threshold: str) -> float:
+        """Energy of a threshold name, e.g., 0.95 for "D5-95"."""
+        try:
+            if not energy_threshold.startswith("D5-"):
+                raise ValueError
+            energy = int(energy_threshold[len("D5-") :]) / 100
+        except (AttributeError, ValueError):
+            raise ValueError(
+                f"Unsupported energy threshold: {energy_threshold}"
+            ) from None
+        if not np.any(np.isclose(self.ENERGY_THRESHOLDS, energy)):
+            raise ValueError(f"Unsupported energy threshold: {energy_threshold}")
+        return energy
 
     def _calc_d575_sigma(self) -> np.ndarray:
         """Calculate the standard deviation for D5-75 duration.
@@ -709,6 +709,65 @@ class PinillaRamosEtAl2024(model.Model):
 
         return c_median, a0, m1, r1, v1, rho_c_d575, sigma_c, n2
 
+    def _calc_d5x(self, energy: float) -> Tuple[np.ndarray, np.ndarray]:
+        """Calculate the median and standard deviation for an energy threshold.
+
+        Parameters
+        ----------
+        energy : float
+            Energy threshold (0.75 for D5-75, 0.95 for D5-95, etc.)
+
+        Returns
+        -------
+        tuple
+            (median_duration, sigma), unbroadcast. D5-75 uses the base model,
+            and other thresholds use the conditional model.
+        """
+        if np.isclose(energy, 0.75):
+            # Use base D5-75 model
+            return self._d575_median, self._d575_sigma
+
+        s = self._scenario
+        mag = np.asarray(s.mag, dtype=float)
+        rrup = np.asarray(s.dist_rup, dtype=float)
+        vs30 = np.asarray(s.v_s30, dtype=float)
+        is_interface = self._is_interface
+
+        # Use conditional model for other energy thresholds
+        d575_median = self._d575_median
+        sigma_575 = self._d575_sigma
+
+        # Get energy-specific coefficients
+        c_median, a0, m1, r1, v1, rho_c_d575, sigma_c, n2 = (
+            self._get_energy_coefficients(energy)
+        )
+        # Square of n2 from the scalar values (as for a scalar scenario)
+        n2_sq = np.where(is_interface, 0.15**2, 0.25**2)
+
+        # Calculate conditional model components
+        c_ratio = (
+            c_median + a0 + m1 * mag + r1 * rrup / 100 + v1 * np.log(vs30 / 3100)
+        )
+
+        # Median duration for this energy threshold
+        d5x_median = d575_median * c_ratio
+
+        # Standard deviation calculation
+        var_5x = (
+            sigma_575**2 * c_ratio ** (2 * n2)
+            + n2_sq * sigma_c**2 * d575_median ** (2 * n2) * c_ratio ** (2 * n2 - 2)
+            + 2
+            * n2
+            * rho_c_d575
+            * c_ratio ** (2 * n2 - 1)
+            * d575_median**n2
+            * sigma_575
+            * sigma_c
+        )
+        d5x_sigma = np.sqrt(var_5x)
+
+        return d5x_median, d5x_sigma
+
     def _calc_duration(self, energy: float = 0.75) -> Tuple[ArrayLike, ...]:
         """Calculate duration for specified energy threshold.
 
@@ -724,73 +783,20 @@ class PinillaRamosEtAl2024(model.Model):
             seconds. Each is a scalar for a scalar scenario, or an array with the
             scenario shape.
         """
-        s = self._scenario
-        mag = np.asarray(s.mag, dtype=float)
-        rrup = np.asarray(s.dist_rup, dtype=float)
-        vs30 = np.asarray(s.v_s30, dtype=float)
-        is_interface = self._is_interface
+        median, sigma = self._calc_d5x(energy)
 
         # Exponent of the transformation
-        n = np.where(is_interface, 0.15, 0.25)
+        n = np.where(self._is_interface, 0.15, 0.25)
 
-        if np.isclose(energy, 0.75):
-            # Use base D5-75 model
-            median = self._d575_median
-            sigma = self._d575_sigma
+        # Transform from log space
+        duration_plus = (median**n + sigma) ** (1 / n)
+        duration_minus = (median**n - sigma) ** (1 / n)
 
-            # Transform from log space
-            duration_plus = (median**n + sigma) ** (1 / n)
-            duration_minus = (median**n - sigma) ** (1 / n)
-
-            return (
-                self._output(median),
-                self._output(duration_plus),
-                self._output(duration_minus),
-            )
-
-        else:
-            # Use conditional model for other energy thresholds
-            d575_median = self._d575_median
-            sigma_575 = self._d575_sigma
-
-            # Get energy-specific coefficients
-            c_median, a0, m1, r1, v1, rho_c_d575, sigma_c, n2 = (
-                self._get_energy_coefficients(energy)
-            )
-            # Square of n2 from the scalar values (as for a scalar scenario)
-            n2_sq = np.where(is_interface, 0.15**2, 0.25**2)
-
-            # Calculate conditional model components
-            c_ratio = (
-                c_median + a0 + m1 * mag + r1 * rrup / 100 + v1 * np.log(vs30 / 3100)
-            )
-
-            # Median duration for this energy threshold
-            d5x_median = d575_median * c_ratio
-
-            # Standard deviation calculation
-            var_5x = (
-                sigma_575**2 * c_ratio ** (2 * n2)
-                + n2_sq * sigma_c**2 * d575_median ** (2 * n2) * c_ratio ** (2 * n2 - 2)
-                + 2
-                * n2
-                * rho_c_d575
-                * c_ratio ** (2 * n2 - 1)
-                * d575_median**n2
-                * sigma_575
-                * sigma_c
-            )
-            d5x_sigma = np.sqrt(var_5x)
-
-            # Transform from log space
-            duration_plus = (d5x_median**n + d5x_sigma) ** (1 / n)
-            duration_minus = (d5x_median**n - d5x_sigma) ** (1 / n)
-
-            return (
-                self._output(d5x_median),
-                self._output(duration_plus),
-                self._output(duration_minus),
-            )
+        return (
+            self._output(median),
+            self._output(duration_plus),
+            self._output(duration_minus),
+        )
 
     @property
     def duration(self) -> ArrayLike:
