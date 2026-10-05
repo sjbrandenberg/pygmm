@@ -3,6 +3,14 @@ title: History
 ---
 
 # Unreleased
+- Added: `NgaEast`, the USGS nshmp-lib NGA-East versions used by the NSHM: "2018", "2023", and
+  "2026" (default), with the `adjusted` (2023 short-period adjustment) and `cpa` (Chapman and Guo
+  (2021) Gulf and Atlantic coastal plain amplification) variants. The 2023 and 2026 versions update
+  the site amplification. The standard deviation combines the panel and EPRI models as in nshmp-lib
+  (the square root of the weighted variances), and the model reproduces the nshmp-lib reference
+  results. `NgaEastUsgs2017` is unchanged and reproduces the earlier nshmp-haz implementation.
+- Added: `depth_sed` scenario value, the thickness of the coastal plain sediments (km), used by
+  `NgaEast` with `adjusted` or `cpa`.
 - Added: the final NGA-Subduction models of Abrahamson and Gülerce (2020, `AbrahamsonGulerce2020`),
   Kuehn et al. (2020, `KuehnEtAl2020`), and Parker et al. (2020, `ParkerEtAl2020`), following the
   USGS nshmp-lib implementations used by the current NSHM. `event_type` ("interface"/"intraslab")

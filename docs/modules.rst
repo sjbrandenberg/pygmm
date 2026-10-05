@@ -83,6 +83,7 @@ Quick Navigation
            kuehn_et_al_2020
            kishida_2017
            model
+           nga_east
            nga_east_usgs_2017
            nga_subduction_usgs_2018
            parker_et_al_2020

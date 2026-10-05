@@ -148,6 +148,14 @@ pygmm.model module
    :undoc-members:
    :show-inheritance:
 
+pygmm.nga\_east module
+----------------------
+
+.. automodule:: pygmm.nga_east
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pygmm.nga\_east\_usgs\_2017 module
 ----------------------------------
 

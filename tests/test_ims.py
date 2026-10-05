@@ -104,6 +104,16 @@ def nga_sub_final(model, **options):
     return factory
 
 
+def nga_east_2026(ims=None, n=300):
+    rng = np.random.default_rng(0)
+    s = pygmm.Scenario(
+        mag=rng.uniform(4.0, 8.2, n),
+        dist_rup=rng.uniform(0.0, 1000.0, n),
+        v_s30=rng.uniform(200.0, 3000.0, n),
+    )
+    return pygmm.NgaEast(s, version="2026", adjusted=True, ims=ims)
+
+
 MODELS = {
     "idriss": (idriss, 22),
     "bssa14": (bssa14, 105),
@@ -111,6 +121,7 @@ MODELS = {
     "cb14": (nga_west2_factory(pygmm.CampbellBozorgnia2014), 21),
     "cy14": (nga_west2_factory(pygmm.ChiouYoungs2014), 24),
     "nga_east": (nga_east, 21),
+    "nga_east_2026": (nga_east_2026, 21),
     "nga_sub": (nga_sub, 24),
     "ag20": (nga_sub_final(pygmm.AbrahamsonGulerce2020, basin=True), 21),
     "kbcg20": (nga_sub_final(pygmm.KuehnEtAl2020, basin=True), 21),
