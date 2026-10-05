@@ -3,6 +3,14 @@ title: History
 ---
 
 # Unreleased
+- Added: `NgaEastSeeds`, the USGS NGA-East seed model logic tree of nshmp-lib (14 weighted seed
+  models; `NGA_EAST_SEEDS_2018`, `_2023`, and `_2026` with the `adjusted` and `cpa` variants), which
+  the current CONUS NSHM combines with `NgaEast` for stable crust, and `NgaEastSeed`, the 27
+  individual NGA-East seed models of nshmp-lib (`NGA_EAST_SEED_*`: 24 table-based seeds, Shahjouei
+  and Pezeshk (2016), and Pezeshk et al. (2018)). Both reproduce the nshmp-lib reference results.
+  `dist_jb` is required for the seed tree and SP16. PGV is not provided for the seed tree, the seeds
+  without PGV tables, or Pezeshk et al. (2018) (nshmp-lib uses the Abrahamson and Bhasin (2020)
+  conditional PGV model, which is not implemented).
 - Added: `NgaEast`, the USGS nshmp-lib NGA-East versions used by the NSHM: "2018", "2023", and
   "2026" (default), with the `adjusted` (2023 short-period adjustment) and `cpa` (Chapman and Guo
   (2021) Gulf and Atlantic coastal plain amplification) variants. The 2023 and 2026 versions update

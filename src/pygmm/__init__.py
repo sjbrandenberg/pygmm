@@ -31,7 +31,7 @@ from .kempton_stewart_2006 import KemptonStewart2006
 from .kuehn_et_al_2020 import KuehnEtAl2020
 from .macedo_abrahamson_liu_2021 import MacedoAbrahamsonLiu2021
 from .model import Scenario
-from .nga_east import NgaEast
+from .nga_east import NgaEast, NgaEastSeed, NgaEastSeeds
 from .nga_east_usgs_2017 import NgaEastUsgs2017
 from .nga_subduction_usgs_2018 import NgaSubductionUsgs2018
 from .parker_et_al_2020 import ParkerEtAl2020
@@ -63,6 +63,8 @@ __all__ = [
     "MacedoAbrahamsonLiu2021",
     "Idriss2014",
     "NgaEast",
+    "NgaEastSeed",
+    "NgaEastSeeds",
     "NgaEastUsgs2017",
     "NgaSubductionUsgs2018",
     "ParkerEtAl2020",
@@ -105,6 +107,8 @@ models = [
     KemptonStewart2006,
     Idriss2014,
     NgaEast,
+    NgaEastSeed,
+    NgaEastSeeds,
     NgaEastUsgs2017,
     NgaSubductionUsgs2018,
     AbrahamsonGulerce2020,
