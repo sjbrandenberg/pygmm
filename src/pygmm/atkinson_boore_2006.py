@@ -190,8 +190,9 @@ class AtkinsonBoore2006(model.GroundMotionModel):
             natural log standard deviation
 
         """
-        # Constant, with the same shape as the response
-        ln_std = np.full(np.shape(self._ln_resp), 0.30)
+        # Constant standard deviation of 0.30 in log10 units, converted to natural
+        # log units, with the same shape as the response
+        ln_std = np.full(np.shape(self._ln_resp), 0.30 * np.log(10))
         return ln_std
 
     def _calc_stress_factor(self, periods: ArrayLike) -> np.ndarray:

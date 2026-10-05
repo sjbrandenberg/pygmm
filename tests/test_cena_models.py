@@ -316,3 +316,10 @@ def test_ab06_site_term_is_continuous(v_s30):
         ).spec_accels
 
     np.testing.assert_allclose(calc(v_s30 - 1e-6), calc(v_s30 + 1e-6), rtol=1e-6)
+
+
+def test_ab06_standard_deviation_in_natural_log_units():
+    # Atkinson and Boore (2006) give a standard deviation of 0.30 in log10 units
+    m = pygmm.AtkinsonBoore2006(pygmm.Scenario(mag=6.5, dist_rup=30.0, v_s30=760.0))
+    np.testing.assert_allclose(m.ln_stds, np.log(10**0.30), rtol=1e-12)
+    np.testing.assert_allclose(m.ln_std_pga, np.log(10**0.30), rtol=1e-12)

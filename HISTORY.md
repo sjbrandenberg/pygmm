@@ -60,6 +60,8 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: Atkinson and Boore (2006) used the standard deviation of 0.30, which is in log10 units, as
+  a natural log standard deviation. It is now 0.30 ln(10) = 0.691, as in nshmp-haz and OpenQuake.
 - Fixed: Atkinson and Boore (2006) left out the "+ b_2" in the nonlinear site coefficient for
   180 < Vs30 <= 300 m/s (Eq. 8), so the site term was discontinuous at 180 and 300 m/s. This changes
   the results for Vs30 in this range, e.g., PGA decreases by about 28% for M7 at 10 km with
