@@ -28,6 +28,10 @@ class Scenario(collections.UserDict):
         depth to the bottom of the rupture plane (:math:`Z_{bor}`, km).
     depth_bot : float
         depth to bottom of seismogenic crust (km).
+    depth_sed : float
+        thickness of the Atlantic and Gulf coastal plain sediments beneath the
+        site (km), the depth to the base of the sediments (``zSed`` in USGS
+        nshmp-lib). NaN or *None* is a site that is not on the coastal plain.
     dip : float
         fault dip angle (:math:`\phi`, deg).
     dist_jb : float
@@ -96,6 +100,7 @@ class Scenario(collections.UserDict):
         "depth_bor",
         "depth_bot",
         "depth_hyp",
+        "depth_sed",
         "dip",
         "dist_crjb",
         "dist_jb",

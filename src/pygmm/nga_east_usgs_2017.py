@@ -91,6 +91,12 @@ class NgaEastUsgs2017(model.GroundMotionModel):
     tables are not used because the site amplification model does not provide
     them).
 
+    For the versions of USGS nshmp-lib (``NGA_EAST_2018``, ``NGA_EAST_2023``,
+    and ``NGA_EAST_2026`` with their adjusted and coastal plain variants), which
+    are used by the current national seismic hazard models and combine the
+    standard deviations as the square root of the weighted mean of the variances,
+    see :class:`pygmm.nga_east.NgaEast`.
+
     The model is vectorized. Each scenario value (``mag``, ``dist_rup``, and
     ``v_s30``) can be a scalar or an array, and the arrays are broadcast
     against each other. For a scalar scenario, the response and standard
