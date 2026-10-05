@@ -114,10 +114,12 @@ class PezeshkZandiehTavakoli2011(model.GroundMotionModel):
         c = self._coeff_rows(self.COEFF)
         mag = model.as_column(self._scenario.mag)
 
-        ln_std_mean = np.where(
+        # The standard deviations are in log10 units
+        log10_std_mean = np.where(
             mag <= 7.0, c.c_12 * mag + c.c_13, -6.95e-3 * mag + c.c_14
         )
 
-        ln_std = np.sqrt(ln_std_mean**2 + c["sigma_reg"] ** 2)
+        log10_std = np.sqrt(log10_std_mean**2 + c["sigma_reg"] ** 2)
+        ln_std = np.log(10) * log10_std
 
         return ln_std

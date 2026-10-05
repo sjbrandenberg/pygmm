@@ -60,6 +60,9 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: Pezeshk et al. (2011) used the standard deviation in log10 units as a natural log standard
+  deviation. It is now converted to natural log units (multiplied by ln(10)), as in OpenQuake,
+  e.g., 0.58 instead of 0.25 for PGA at M6.
 - Fixed: Atkinson and Boore (2006) used the hard-rock coefficients only for `v_s30` of zero, so
   hard-rock sites used the B/C coefficients with the site amplification extrapolated to their
   velocity. Sites with `v_s30` of 2000 m/s or greater now use the hard-rock coefficients without site

@@ -347,3 +347,24 @@ def test_ab06_hard_rock_sites_use_rock_coefficients(v_s30):
     # Just below 2000 m/s, the B/C coefficients are used with site amplification
     soft = pygmm.AtkinsonBoore2006(pygmm.Scenario(v_s30=1999.0, **kwds))
     assert np.all(soft._ln_resp != m._ln_resp)
+
+
+@pytest.mark.parametrize(
+    "mag,period,c_12,c_13,c_14,sigma_reg",
+    [
+        # Coefficients for PGA and 1.0 s from OpenQuake (pezeshk_2011.py)
+        (6.0, 0.0, -0.021050254, 0.37776584, 0.27905505, 0.020605025),
+        (7.5, 0.0, -0.021050254, 0.37776584, 0.27905505, 0.020605025),
+        (6.0, 1.0, -0.011795872, 0.35880759, 0.32487746, 0.022183642),
+    ],
+)
+def test_pzt11_standard_deviation_in_natural_log_units(
+    mag, period, c_12, c_13, c_14, sigma_reg
+):
+    # The standard deviations of Pezeshk et al. (2011) are in log10 units
+    m = pygmm.PezeshkZandiehTavakoli2011(pygmm.Scenario(mag=mag, dist_rup=30.0))
+    log10_std_mean = c_12 * mag + c_13 if mag <= 7.0 else -6.95e-3 * mag + c_14
+    expected = np.log(10 ** np.sqrt(log10_std_mean**2 + sigma_reg**2))
+    actual = m.ln_std_pga if period == 0 else m.interp_ln_stds([period])[0]
+    # pygmm's coefficients are rounded to 4 significant digits
+    np.testing.assert_allclose(actual, expected, rtol=1e-3)
