@@ -67,6 +67,7 @@ Quick Navigation
            afshari_stewart_2016
            akkar_sandikkaya_bommer_2014
            atkinson_boore_2006
+           atkinson_macias_2009
            baker_jayaram_2008
            bayless_abrahamson_2018
            bayless_abrahamson_2019
@@ -92,6 +93,7 @@ Quick Navigation
            stafford_2017
            tavakoli_pezeshk_2005
            tools
+           zhao_et_al_2006
 
 Module Documentation
 =====================

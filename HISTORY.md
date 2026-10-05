@@ -3,6 +3,18 @@ title: History
 ---
 
 # Unreleased
+- Added: the USGS nshmp-lib versions of the Atkinson and Macias (2009) interface model
+  (`AtkinsonMacias2009`; `GMM_IDS`: `AM_09_INTERFACE`, `_BASIN`, `_BASIN_M9`, `_BASIN_SITE_FIX`,
+  and `_BASIN_M9_SITE_FIX`) and the Zhao et al. (2006) interface and intraslab model
+  (`ZhaoEtAl2006`; `ZHAO_06_INTERFACE`, `_INTERFACE_BASIN`, `_INTERFACE_BASIN_M9`, `_SLAB`, and
+  `_SLAB_BASIN`, with `event_type` as a scenario value), which are used by the Cascadia
+  subduction logic trees of the current CONUS NSHM. The `basin` (USGS CB14 deep basin term), `m9`
+  (Seattle M9 adjustment), and, for AM09, `site_fix` (the reference PGA instead of its natural log
+  in the BA08 site term) options select the nshmp-lib variants. As in nshmp-lib, Zhao et al.
+  (2006) selects the site class from `v_s30`, uses a depth of 20 km for interface events and
+  `depth_tor` for intraslab events, and extrapolates 7.5 and 10 s with BC Hydro (2012) and AM09,
+  and both models interpolate the periods without coefficients and compute PGV with the
+  Abrahamson and Bhasin (2020) conditional model. Both reproduce the nshmp-lib reference results.
 - Added: the USGS nshmp-lib versions of the NGA-West2 models used by the NSHM:
   `AbrahamsonSilvaKamai2014Nshmp`, `BooreStewartSeyhanAtkinson2014Nshmp`,
   `CampbellBozorgnia2014Nshmp`, `ChiouYoungs2014Nshmp`, and `Idriss2014Nshmp` (module

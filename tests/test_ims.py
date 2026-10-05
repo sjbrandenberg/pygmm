@@ -104,6 +104,24 @@ def nga_sub_final(model, **options):
     return factory
 
 
+def nshmp_subduction(model, event_types, **options):
+    def factory(ims=None, n=300):
+        rng = np.random.default_rng(0)
+        s = pygmm.Scenario(
+            mag=rng.uniform(5.0, 9.5, n),
+            dist_rup=rng.uniform(0.0, 500.0, n),
+            v_s30=rng.uniform(150.0, 1000.0, n),
+            depth_tor=rng.uniform(5.0, 150.0, n),
+            depth_2_5=rng.choice([np.nan, 1.0, 4.0, 7.0], n),
+            event_type=rng.choice(event_types, n),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return model(s, ims=ims, **options)
+
+    return factory
+
+
 def nga_west2_nshmp(model, **options):
     def factory(ims=None, n=300):
         rng = np.random.default_rng(0)
@@ -175,6 +193,16 @@ MODELS = {
     "ag20": (nga_sub_final(pygmm.AbrahamsonGulerce2020, basin=True), 21),
     "kbcg20": (nga_sub_final(pygmm.KuehnEtAl2020, basin=True), 21),
     "psbah20": (nga_sub_final(pygmm.ParkerEtAl2020, basin=True), 21),
+    "am09": (
+        nshmp_subduction(pygmm.AtkinsonMacias2009, ["interface"], basin=True, m9=True),
+        21,
+    ),
+    "zea06": (
+        nshmp_subduction(
+            pygmm.ZhaoEtAl2006, ["interface", "intraslab"], basin=True, m9=True
+        ),
+        21,
+    ),
     "ask14_nshmp": (
         nga_west2_nshmp(pygmm.AbrahamsonSilvaKamai2014Nshmp, basin=True),
         21,

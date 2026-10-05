@@ -52,6 +52,14 @@ pygmm.atkinson\_boore\_2006 module
    :undoc-members:
    :show-inheritance:
 
+pygmm.atkinson\_macias\_2009 module
+-----------------------------------
+
+.. automodule:: pygmm.atkinson_macias_2009
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pygmm.baker\_jayaram\_2008 module
 ---------------------------------
 
@@ -216,6 +224,14 @@ pygmm.types module
 ------------------
 
 .. automodule:: pygmm.types
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pygmm.zhao\_et\_al\_2006 module
+-------------------------------
+
+.. automodule:: pygmm.zhao_et_al_2006
    :members:
    :undoc-members:
    :show-inheritance:

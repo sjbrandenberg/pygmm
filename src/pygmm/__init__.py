@@ -17,6 +17,7 @@ from .abrahamson_silva_kamai_2014 import AbrahamsonSilvaKamai2014
 from .afshari_stewart_2016 import AfshariStewart2016
 from .akkar_sandikkaya_bommer_2014 import AkkarSandikkayaBommer2014
 from .atkinson_boore_2006 import AtkinsonBoore2006
+from .atkinson_macias_2009 import AtkinsonMacias2009
 from .bayless_abrahamson_2018 import BaylessAbrahamson2018
 from .bayless_abrahamson_2019 import BaylessAbrahamson2019
 from .boore_stewart_seyhan_atkinson_2014 import BooreStewartSeyhanAtkinson2014
@@ -46,6 +47,7 @@ from .parker_et_al_2020 import ParkerEtAl2020
 from .pezeshk_zandieh_tavakoli_2011 import PezeshkZandiehTavakoli2011
 from .stafford_2017 import Stafford2017
 from .tavakoli_pezeshk_2005 import TavakoliPezeshk05
+from .zhao_et_al_2006 import ZhaoEtAl2006
 
 __all__ = [
     "Scenario",
@@ -57,6 +59,7 @@ __all__ = [
     "AfshariStewart2016",
     "AkkarSandikkayaBommer2014",
     "AtkinsonBoore2006",
+    "AtkinsonMacias2009",
     "BaylessAbrahamson2018",
     "BaylessAbrahamson2019",
     "BooreStewartSeyhanAtkinson2014",
@@ -85,6 +88,7 @@ __all__ = [
     "PezeshkZandiehTavakoli2011",
     "TavakoliPezeshk05",
     "Stafford2017",
+    "ZhaoEtAl2006",
 ]
 
 __author__ = "Albert Kottke"
@@ -134,6 +138,8 @@ models = [
     AbrahamsonGulerce2020,
     KuehnEtAl2020,
     ParkerEtAl2020,
+    AtkinsonMacias2009,
+    ZhaoEtAl2006,
     PezeshkZandiehTavakoli2011,
     TavakoliPezeshk05,
     Stafford2017,

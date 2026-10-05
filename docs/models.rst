@@ -229,6 +229,7 @@ Detailed Model List
    abrahamson_silva_kamai_2014.AbrahamsonSilvaKamai2014
    akkar_sandikkaya_bommer_2014.AkkarSandikkayaBommer2014
    atkinson_boore_2006.AtkinsonBoore2006
+   atkinson_macias_2009.AtkinsonMacias2009
    boore_stewart_seyhan_atkinson_2014.BooreStewartSeyhanAtkinson2014
    campbell_2003.Campbell2003
    campbell_bozorgnia_2014.CampbellBozorgnia2014
@@ -253,6 +254,7 @@ Detailed Model List
    parker_et_al_2020.ParkerEtAl2020
    pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
    tavakoli_pezeshk_2005.TavakoliPezeshk05
+   zhao_et_al_2006.ZhaoEtAl2006
 
 .. _model-selection-guide:
 
@@ -389,6 +391,7 @@ following models have been implemented.
     ~abrahamson_silva_kamai_2014.AbrahamsonSilvaKamai2014
     ~akkar_sandikkaya_bommer_2014.AkkarSandikkayaBommer2014
     ~atkinson_boore_2006.AtkinsonBoore2006
+    ~atkinson_macias_2009.AtkinsonMacias2009
     ~boore_stewart_seyhan_atkinson_2014.BooreStewartSeyhanAtkinson2014
     ~campbell_2003.Campbell2003
     ~campbell_bozorgnia_2014.CampbellBozorgnia2014
@@ -412,6 +415,7 @@ following models have been implemented.
     ~parker_et_al_2020.ParkerEtAl2020
     ~pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
     ~tavakoli_pezeshk_2005.TavakoliPezeshk05
+    ~zhao_et_al_2006.ZhaoEtAl2006
 
 If you are interested in contributing another model to the collection please see
 :doc:`contributing`.
