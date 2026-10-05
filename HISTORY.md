@@ -60,6 +60,9 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: Atkinson and Boore (2006) divided PGV and PGD by g along with PGA and PSA, so `pgv` and
+  `pgd` were 980.665 times too small. They are now in cm/sec and cm, as for the other models (e.g.,
+  PGV of 44 cm/sec for M7 at 10 km on B/C).
 - Fixed: Atkinson and Boore (2006) used the standard deviation of 0.30, which is in log10 units, as
   a natural log standard deviation. It is now 0.30 ln(10) = 0.691, as in nshmp-haz and OpenQuake.
 - Fixed: Atkinson and Boore (2006) left out the "+ b_2" in the nonlinear site coefficient for

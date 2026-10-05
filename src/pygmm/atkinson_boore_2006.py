@@ -131,8 +131,9 @@ class AtkinsonBoore2006(model.GroundMotionModel):
             )
             log10_resp = np.where(is_rock, log10_rock, log10_resp)
 
-        # Convert from cm/sec/sec to gravity
-        log10_resp = log10_resp - np.log10(980.665)
+        # Convert PGA and PSA from cm/sec/sec to gravity. PGV (cm/sec) and PGD
+        # (cm), which have negative periods, are not converted.
+        log10_resp = log10_resp - np.where(periods >= 0, np.log10(980.665), 0.0)
 
         ln_resp = np.log(10**log10_resp)
         return ln_resp

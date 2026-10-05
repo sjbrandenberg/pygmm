@@ -323,3 +323,13 @@ def test_ab06_standard_deviation_in_natural_log_units():
     m = pygmm.AtkinsonBoore2006(pygmm.Scenario(mag=6.5, dist_rup=30.0, v_s30=760.0))
     np.testing.assert_allclose(m.ln_stds, np.log(10**0.30), rtol=1e-12)
     np.testing.assert_allclose(m.ln_std_pga, np.log(10**0.30), rtol=1e-12)
+
+
+def test_ab06_pgv_and_pgd_units():
+    # PGV (cm/sec) and PGD (cm) are not converted to gravity like PGA and PSA
+    m = pygmm.AtkinsonBoore2006(pygmm.Scenario(mag=7.0, dist_rup=10.0, v_s30=760.0))
+    log10_resp = m._ln_resp / np.log(10)
+    np.testing.assert_allclose(m.pgv, 10 ** log10_resp[m.INDEX_PGV], rtol=1e-12)
+    np.testing.assert_allclose(m.pgv, 44.34, rtol=1e-3)
+    np.testing.assert_allclose(m.pgd, 19.05, rtol=1e-3)
+    np.testing.assert_allclose(m.pga, 1.038, rtol=1e-3)
