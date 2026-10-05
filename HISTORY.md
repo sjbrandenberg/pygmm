@@ -11,6 +11,8 @@ title: History
 - Added: NGA-Subduction USGS (2018) model (`NgaSubductionUsgs2018`), the USGS nshmp-haz version of
   Abrahamson et al. (2018, PEER 2018/02) with Cascadia adjustments for interface and intraslab events
   (`event_type`). `epistemic=False` gives the central branch (the nshmp-haz `*_NO_EPI` variants).
+  a14 for PGA is -0.223 (the 0.01 s value, as in OpenQuake) instead of -0.233 in nshmp-haz, which
+  increases intraslab PGA by about 4 to 5% relative to nshmp-haz.
 - Changed: Idriss (2014) accepts arrays of scenario values (`mag`, `dist_rup`, `v_s30`, `mechanism`).
   Arrays of N scenarios give results with shape (N, periods), e.g., `pga` with shape (N,).
   Scalar scenarios give the same results as before.

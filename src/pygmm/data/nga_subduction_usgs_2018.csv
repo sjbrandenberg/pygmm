@@ -1,6 +1,6 @@
-# NGA-Subduction USGS (2018) coefficients from USGS nshmp-haz (public domain): src/gov/usgs/earthquake/nshmp/gmm/coeffs/nga-subduction.csv. Column T is renamed to period (s) with PGA as 0.
+# NGA-Subduction USGS (2018) coefficients from USGS nshmp-haz (public domain): src/gov/usgs/earthquake/nshmp/gmm/coeffs/nga-subduction.csv. Column T is renamed to period (s) with PGA as 0. a14 for PGA is changed from -0.233 to -0.223 (the 0.01 s value, as in OpenQuake).
 period,a1,a2,a4,a6,a11,a12,a13,a14,vlin,b,c1int,adj_int,adj_slab,adj_slab_epi_lo,adj_slab_epi_hi,tau
-0,2.340,-1.044,0.59,-0.00705,0.0170,0.818,-0.0135,-0.233,865.1,-1.186,8.20,1.04,0.83,-0.50,0.50,0.580
+0,2.340,-1.044,0.59,-0.00705,0.0170,0.818,-0.0135,-0.223,865.1,-1.186,8.20,1.04,0.83,-0.50,0.50,0.580
 0.01,2.340,-1.044,0.59,-0.00705,0.0170,0.818,-0.0135,-0.223,865.1,-1.186,8.20,1.04,0.83,-0.50,0.50,0.580
 0.02,2.360,-1.044,0.59,-0.00707,0.0170,0.857,-0.0135,-0.196,865.1,-1.219,8.20,1.05,0.79,-0.50,0.50,0.580
 0.03,2.384,-1.080,0.59,-0.00710,0.0170,0.921,-0.0135,-0.128,907.8,-1.273,8.20,1.23,0.71,-0.50,0.50,0.580

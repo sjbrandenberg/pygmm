@@ -154,6 +154,19 @@ def test_coefficient_columns():
     np.testing.assert_array_equal(c.adj_slab_epi_hi[c.period >= 7.5], 0.3)
 
 
+def test_pga_coefficients_equal_0p01_s():
+    # The PGA coefficients equal the 0.01 s coefficients. a14 for PGA is -0.233
+    # in nshmp-haz, which is changed to the 0.01 s value of -0.223 (as in
+    # OpenQuake).
+    c = NGASUB18.COEFF
+    pga = c[NGASUB18.INDEX_PGA]
+    psa_0p01 = c[np.flatnonzero(c.period == 0.01)[0]]
+    for name in c.dtype.names:
+        if name != "period":
+            assert pga[name] == psa_0p01[name], name
+    assert pga["a14"] == -0.223
+
+
 # Event types, magnitudes around C1 (7.2 for slab and c1int, 8.2 to 7.8, for
 # interface events), sites around v_lin (865.1 m/sec at short periods, 400 m/sec
 # at long periods) and above 1000 m/sec, depths around 100 km, and distances

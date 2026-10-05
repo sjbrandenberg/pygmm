@@ -24,7 +24,11 @@ class NgaSubductionUsgs2018(model.GroundMotionModel):
     nshmp-haz code (``Gmm.NGA_SUB_USGS_INTERFACE``, ``NGA_SUB_USGS_SLAB``,
     and the ``*_NO_EPI`` variants), including its coefficients and the fixes
     to typos in the report noted there (a '+' in the nonlinear site term,
-    :math:`a_3 = 0.1`, and slab epistemic adjustments of 0.3 at 7.5 and 10 s):
+    :math:`a_3 = 0.1`, and slab epistemic adjustments of 0.3 at 7.5 and 10 s).
+    The exception is :math:`a_{14}` for PGA, which is -0.233 in nshmp-haz. Here
+    it is -0.223, the 0.01 s value, as in OpenQuake, because all of the other
+    PGA coefficients equal the 0.01 s coefficients. This only affects
+    intraslab events (PGA about 4 to 5% larger). As in nshmp-haz:
 
     * The Cascadia adjustment (``adj_int`` or ``adj_slab``) is added to the
       mean. The reference PGA (:math:`V_{s30}` = 1000 m/sec) used by the
