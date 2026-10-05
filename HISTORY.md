@@ -60,6 +60,11 @@ title: History
 - Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
 - Fixed: the warning for a scalar value above a parameter's recommended limit showed
   "{self.max}" instead of the limit.
+- Fixed: Atkinson and Boore (2006) used the hard-rock coefficients only for `v_s30` of zero, so
+  hard-rock sites used the B/C coefficients with the site amplification extrapolated to their
+  velocity. Sites with `v_s30` of 2000 m/s or greater now use the hard-rock coefficients without site
+  amplification, as in the paper and OpenQuake. At 2000 m/s, PGA increases by a factor of about 1.4
+  to 2.1 and PSA at 1 s by about 1.5.
 - Fixed: Atkinson and Boore (2006) divided PGV and PGD by g along with PGA and PSA, so `pgv` and
   `pgd` were 980.665 times too small. They are now in cm/sec and cm, as for the other models (e.g.,
   PGV of 44 cm/sec for M7 at 10 km on B/C).

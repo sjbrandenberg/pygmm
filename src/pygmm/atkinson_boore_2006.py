@@ -12,7 +12,9 @@ class AtkinsonBoore2006(model.GroundMotionModel):
     """Atkinson and Boore (2006, :cite:`atkinson06`) model.
 
     Developed for the Eastern North America with a reference velocity of 760
-    or 2000 m/s.
+    or 2000 m/s. Hard-rock sites (``v_s30`` of 2000 m/s or greater) use the
+    hard-rock coefficients without site amplification. Other sites use the B/C
+    coefficients (760 m/s) with the site amplification of Eq. 7 and 8.
 
     The model is vectorized. Each scenario value (``mag``, ``dist_rup``, and
     ``v_s30``) can be a scalar or an array, and the arrays are broadcast
@@ -101,11 +103,12 @@ class AtkinsonBoore2006(model.GroundMotionModel):
         # including the stress drop correction
         log10_resp = self._calc_log10_ref(self._coeff_rows(self.COEFF["bc"]), periods)
 
-        # The hard-rock coefficients without site amplification are used if
-        # v_s30 is zero, as for scalar scenarios. The site amplification is
-        # computed with the reference velocity there to avoid the logarithm of
-        # zero, and then replaced.
-        is_rock = v_s30 == 0
+        # The hard-rock coefficients without site amplification are used for
+        # hard-rock sites (v_s30 >= 2000 m/s), and for v_s30 of zero as in
+        # previous versions. The site amplification is computed with the
+        # reference velocity there to avoid the logarithm of zero, and then
+        # replaced.
+        is_rock = (v_s30 == 0) | (v_s30 >= 2000)
         if np.any(is_rock):
             v_s30 = np.where(is_rock, 760.0, v_s30)
 

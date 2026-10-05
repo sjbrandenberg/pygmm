@@ -18,8 +18,8 @@ MAGS = [4.5, 5.5, 6.5, 7.0, 7.1, 7.16, 7.2, 7.5, 8.2]
 # Distances cover the segments at 10, 70, 130, and 140 km
 DISTS = [1.0, 5.0, 10.0, 50.0, 70.0, 100.0, 130.0, 135.0, 140.0, 150.0, 500.0]
 # v_s30 covers the nonlinear site segments at 180, 300, and 760 m/s in AB06.
-# Zero uses the hard-rock coefficients.
-V_S30S = [0.0, 150.0, 180.0, 250.0, 300.0, 500.0, 760.0, 2000.0]
+# Zero and 2000 m/s and greater use the hard-rock coefficients.
+V_S30S = [0.0, 150.0, 180.0, 250.0, 300.0, 500.0, 760.0, 1999.0, 2000.0, 2500.0]
 PERIODS = [0.05, 0.3, 1.0, 2.5]
 
 # Model, whether it uses v_s30, and a single spectral period
@@ -333,3 +333,17 @@ def test_ab06_pgv_and_pgd_units():
     np.testing.assert_allclose(m.pgv, 44.34, rtol=1e-3)
     np.testing.assert_allclose(m.pgd, 19.05, rtol=1e-3)
     np.testing.assert_allclose(m.pga, 1.038, rtol=1e-3)
+
+
+@pytest.mark.parametrize("v_s30", [2000.0, 2500.0])
+def test_ab06_hard_rock_sites_use_rock_coefficients(v_s30):
+    # Hard-rock sites use the hard-rock coefficients without site amplification,
+    # the same as v_s30 of zero
+    kwds = dict(mag=6.5, dist_rup=30.0)
+    rock = pygmm.AtkinsonBoore2006(pygmm.Scenario(v_s30=0.0, **kwds))
+    m = pygmm.AtkinsonBoore2006(pygmm.Scenario(v_s30=v_s30, **kwds))
+    np.testing.assert_array_equal(m._ln_resp, rock._ln_resp)
+
+    # Just below 2000 m/s, the B/C coefficients are used with site amplification
+    soft = pygmm.AtkinsonBoore2006(pygmm.Scenario(v_s30=1999.0, **kwds))
+    assert np.all(soft._ln_resp != m._ln_resp)
