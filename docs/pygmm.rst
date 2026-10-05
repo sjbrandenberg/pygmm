@@ -12,6 +12,14 @@ pygmm.abrahamson\_gregor\_addo\_2016 module
    :undoc-members:
    :show-inheritance:
 
+pygmm.abrahamson\_gulerce\_2020 module
+--------------------------------------
+
+.. automodule:: pygmm.abrahamson_gulerce_2020
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pygmm.abrahamson\_silva\_1996 module
 ------------------------------------
 
@@ -124,6 +132,14 @@ pygmm.kishida\_2017 module
    :undoc-members:
    :show-inheritance:
 
+pygmm.kuehn\_et\_al\_2020 module
+--------------------------------
+
+.. automodule:: pygmm.kuehn_et_al_2020
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 pygmm.model module
 ------------------
 
@@ -144,6 +160,14 @@ pygmm.nga\_subduction\_usgs\_2018 module
 ----------------------------------------
 
 .. automodule:: pygmm.nga_subduction_usgs_2018
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pygmm.parker\_et\_al\_2020 module
+---------------------------------
+
+.. automodule:: pygmm.parker_et_al_2020
    :members:
    :undoc-members:
    :show-inheritance:

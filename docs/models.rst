@@ -224,6 +224,7 @@ Detailed Model List
    :template: class.rst
 
    abrahamson_gregor_addo_2016.AbrahamsonGregorAddo2016
+   abrahamson_gulerce_2020.AbrahamsonGulerce2020
    abrahamson_shi_yang_2016.AbrahamsonShiYang2016
    abrahamson_silva_kamai_2014.AbrahamsonSilvaKamai2014
    akkar_sandikkaya_bommer_2014.AkkarSandikkayaBommer2014
@@ -239,6 +240,8 @@ Detailed Model List
    macedo_abrahamson_liu_2021.MacedoAbrahamsonLiu2021
    nga_east_usgs_2017.NgaEastUsgs2017
    nga_subduction_usgs_2018.NgaSubductionUsgs2018
+   kuehn_et_al_2020.KuehnEtAl2020
+   parker_et_al_2020.ParkerEtAl2020
    pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
    tavakoli_pezeshk_2005.TavakoliPezeshk05
 
@@ -372,6 +375,7 @@ following models have been implemented.
     :nosignatures:
 
     ~abrahamson_gregor_addo_2016.AbrahamsonGregorAddo2016
+    ~abrahamson_gulerce_2020.AbrahamsonGulerce2020
     ~abrahamson_shi_yang_2016.AbrahamsonShiYang2016
     ~abrahamson_silva_kamai_2014.AbrahamsonSilvaKamai2014
     ~akkar_sandikkaya_bommer_2014.AkkarSandikkayaBommer2014
@@ -386,6 +390,8 @@ following models have been implemented.
     ~idriss_2014.Idriss2014
     ~nga_east_usgs_2017.NgaEastUsgs2017
     ~nga_subduction_usgs_2018.NgaSubductionUsgs2018
+    ~kuehn_et_al_2020.KuehnEtAl2020
+    ~parker_et_al_2020.ParkerEtAl2020
     ~pezeshk_zandieh_tavakoli_2011.PezeshkZandiehTavakoli2011
     ~tavakoli_pezeshk_2005.TavakoliPezeshk05
 

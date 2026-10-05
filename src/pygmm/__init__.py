@@ -10,6 +10,7 @@ except ImportError:
 
 from .abrahamson_bhasin_2020 import AbrahamsonBhasin2020
 from .abrahamson_gregor_addo_2016 import AbrahamsonGregorAddo2016
+from .abrahamson_gulerce_2020 import AbrahamsonGulerce2020
 from .abrahamson_shi_yang_2016 import AbrahamsonShiYang2016
 from .abrahamson_silva_1996 import AbrahamsonSilva1996
 from .abrahamson_silva_kamai_2014 import AbrahamsonSilvaKamai2014
@@ -27,10 +28,12 @@ from .derras_bard_cotton_2014 import DerrasBardCotton2014
 from .gulerce_abrahamson_2011 import GulerceAbrahamson2011
 from .idriss_2014 import Idriss2014
 from .kempton_stewart_2006 import KemptonStewart2006
+from .kuehn_et_al_2020 import KuehnEtAl2020
 from .macedo_abrahamson_liu_2021 import MacedoAbrahamsonLiu2021
 from .model import Scenario
 from .nga_east_usgs_2017 import NgaEastUsgs2017
 from .nga_subduction_usgs_2018 import NgaSubductionUsgs2018
+from .parker_et_al_2020 import ParkerEtAl2020
 from .pezeshk_zandieh_tavakoli_2011 import PezeshkZandiehTavakoli2011
 from .stafford_2017 import Stafford2017
 from .tavakoli_pezeshk_2005 import TavakoliPezeshk05
@@ -41,6 +44,7 @@ __all__ = [
     "AbrahamsonShiYang2016",
     "AbrahamsonSilvaKamai2014",
     "AbrahamsonGregorAddo2016",
+    "AbrahamsonGulerce2020",
     "AfshariStewart2016",
     "AkkarSandikkayaBommer2014",
     "AtkinsonBoore2006",
@@ -54,10 +58,12 @@ __all__ = [
     "DerrasBardCotton2014",
     "GulerceAbrahamson2011",
     "KemptonStewart2006",
+    "KuehnEtAl2020",
     "MacedoAbrahamsonLiu2021",
     "Idriss2014",
     "NgaEastUsgs2017",
     "NgaSubductionUsgs2018",
+    "ParkerEtAl2020",
     "PezeshkZandiehTavakoli2011",
     "TavakoliPezeshk05",
     "Stafford2017",
@@ -98,6 +104,9 @@ models = [
     Idriss2014,
     NgaEastUsgs2017,
     NgaSubductionUsgs2018,
+    AbrahamsonGulerce2020,
+    KuehnEtAl2020,
+    ParkerEtAl2020,
     PezeshkZandiehTavakoli2011,
     TavakoliPezeshk05,
     Stafford2017,

@@ -85,6 +85,25 @@ def nga_sub(ims=None, n=300):
     return pygmm.NgaSubductionUsgs2018(s, ims=ims)
 
 
+def nga_sub_final(model, **options):
+    def factory(ims=None, n=300):
+        rng = np.random.default_rng(0)
+        s = pygmm.Scenario(
+            mag=rng.uniform(5.0, 9.0, n),
+            dist_rup=rng.uniform(10.0, 500.0, n),
+            v_s30=rng.uniform(150.0, 1000.0, n),
+            depth_tor=rng.uniform(5.0, 100.0, n),
+            depth_2_5=rng.choice([np.nan, 1.0, 4.0], n),
+            event_type=rng.choice(["interface", "intraslab"], n),
+            region=rng.choice(["global", "alaska", "cascadia", "prvi"], n),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return model(s, ims=ims, **options)
+
+    return factory
+
+
 MODELS = {
     "idriss": (idriss, 22),
     "bssa14": (bssa14, 105),
@@ -93,6 +112,9 @@ MODELS = {
     "cy14": (nga_west2_factory(pygmm.ChiouYoungs2014), 24),
     "nga_east": (nga_east, 21),
     "nga_sub": (nga_sub, 24),
+    "ag20": (nga_sub_final(pygmm.AbrahamsonGulerce2020, basin=True), 21),
+    "kbcg20": (nga_sub_final(pygmm.KuehnEtAl2020, basin=True), 21),
+    "psbah20": (nga_sub_final(pygmm.ParkerEtAl2020, basin=True), 21),
 }
 
 

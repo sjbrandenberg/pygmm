@@ -3,6 +3,15 @@ title: History
 ---
 
 # Unreleased
+- Added: the final NGA-Subduction models of Abrahamson and Gülerce (2020, `AbrahamsonGulerce2020`),
+  Kuehn et al. (2020, `KuehnEtAl2020`), and Parker et al. (2020, `ParkerEtAl2020`), following the
+  USGS nshmp-lib implementations used by the current NSHM. `event_type` ("interface"/"intraslab")
+  and `region` ("global", "alaska", "cascadia", "prvi") are scenario values, and constructor options
+  (e.g., `basin`, `adjusted`, `ak_adjusted`, `seattle_basin`, `m9`, `epistemic`) select the
+  nshmp-lib variants. The epistemic branches are collapsed as in nshmp-lib. Each model reproduces the
+  nshmp-lib reference results. As in nshmp-lib, the Cascadia basin term is applied in all regions
+  when `depth_2_5` is given, and the Kuehn et al. (2020) epistemic uncertainty does not depend on
+  distance.
 - Added: NGA-East for USGS (2017) model (`NgaEastUsgs2017`), following the USGS nshmp-haz
   implementation: 17 weighted table-based median models for hard rock, the Stewart et al. (2017) and
   Hashash et al. (2017) site amplification, and a 0.2 panel / 0.8 EPRI standard deviation. The

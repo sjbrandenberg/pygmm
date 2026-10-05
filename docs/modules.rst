@@ -61,6 +61,7 @@ Quick Navigation
 
            abrahamson_bhasin_2020
            abrahamson_gregor_addo_2016
+           abrahamson_gulerce_2020
            abrahamson_silva_1996
            abrahamson_silva_kamai_2014
            afshari_stewart_2016
@@ -79,10 +80,12 @@ Quick Navigation
            hermkes_kuehn_riggelsen_2014
            idriss_2014
            kempton_stewart_2006
+           kuehn_et_al_2020
            kishida_2017
            model
            nga_east_usgs_2017
            nga_subduction_usgs_2018
+           parker_et_al_2020
            pezeshk_zandieh_tavakoli_2011
            stafford_2017
            tavakoli_pezeshk_2005
