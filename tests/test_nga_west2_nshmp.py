@@ -1095,6 +1095,37 @@ def test_epistemic_branches(cls):
         np.log(epi.spec_accels) - np.log(center.spec_accels), offset, rtol=1e-12
     )
     np.testing.assert_array_equal(epi.ln_stds, center.ln_stds)
+    # The branches used for hazard (nshmp-lib GroundMotions.createNgaTree)
+    for im in ["pga", "psa"] + (["pgv"] if cls.INDEX_PGV is not None else []):
+        branches = epi.ln_branches(im)
+        [(w_c, ln_c, std_c)] = center.ln_branches(im)
+        assert w_c == 1.0
+        assert [w for w, _, _ in branches] == [0.185, 0.63, 0.185]
+        for (_, ln, std), sign in zip(branches, [-1, 0, 1]):
+            np.testing.assert_allclose(ln, ln_c + sign * 0.25, rtol=0, atol=1e-12)
+            np.testing.assert_array_equal(std, std_c)
+    w = np.array([b[0] for b in epi.ln_branches()])
+    ln = np.array([b[1] for b in epi.ln_branches()])
+    np.testing.assert_allclose(np.log(w @ np.exp(ln)), epi.ln_pga, rtol=1e-12)
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+def test_tree_branches(grid):
+    _, scenario = grid
+    for tree, components in Tree.TREES.items():
+        m = Tree(scenario, tree=tree, ims=["pga"])
+        branches = m.ln_branches("pga")
+        assert len(branches) == 3 * len(components)
+        assert math.isclose(sum(w for w, _, _ in branches), 1.0)
+        expected = [
+            (w * w_epi, ln, std)
+            for cls, o, w in components
+            for w_epi, ln, std in cls(scenario, ims=["pga"], **o).ln_branches("pga")
+        ]
+        for (w, ln, std), (w_e, ln_e, std_e) in zip(branches, expected):
+            assert math.isclose(w, w_e)
+            np.testing.assert_array_equal(ln, ln_e)
+            np.testing.assert_array_equal(std, std_e)
 
 
 def test_width_from_depth_bor_and_depth_hyp():

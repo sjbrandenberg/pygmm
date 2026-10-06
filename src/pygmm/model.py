@@ -246,6 +246,10 @@ class GroundMotionModel(Model):
 
         self._ln_resp = None
         self._ln_std = None
+        # Branches of the logic tree of the ground motion distribution (e.g., the
+        # USGS epistemic branches of the median) as a list of (weight, ln_resp,
+        # ln_std), or None for a single branch (_ln_resp and _ln_std)
+        self._branches = None
         self._ims = None if ims is None else self._check_ims(ims)
         # Coefficient rows (periods) that are computed, or None for all rows
         self._indices = None if ims is None else self._ims_indices(self._ims)
@@ -567,6 +571,62 @@ class GroundMotionModel(Model):
         else:
             return self._take(self._ln_std, self.INDEX_PGD, "pgd")
 
+    def _branch_list(self) -> list:
+        """Branches as (weight, ln_resp, ln_std) of the computed coefficient rows."""
+        if self._branches is None:
+            return [(1.0, self._ln_resp, self._ln_std)]
+        return list(self._branches)
+
+    def ln_branches(self, im: str = "pga") -> list:
+        r"""Branches of the logic tree of the ground motion distribution.
+
+        Models with a logic tree of the median or the standard deviation, such as
+        the USGS epistemic uncertainty branches of the nshmp-lib models, give the
+        collapsed values in ``ln_pga`` etc. (the natural log of the weighted
+        median, :math:`\ln \sum_i w_i \exp(\mu_i)`, as nshmp-lib's
+        ``GroundMotions.combine``). The collapsed distribution is not the mixture
+        of the branch distributions, so hazard calculations should instead sum the
+        weighted exceedance probabilities of the branches, as nshmp-lib does
+        (``ExceedanceModel.treeExceedanceCombined``). Models without branches
+        return a single branch with a weight of 1.
+
+        Parameters
+        ----------
+        im : str, optional
+            intensity measure: "pga" (default), "pgv", "pgd", or "psa" for the
+            computed spectral accelerations
+
+        Returns
+        -------
+        branches : list of tuple
+            (weight, ln_mean, ln_std) of each branch, where ln_mean and ln_std
+            are the natural logs of the median (in the units of ``ln_pga`` etc.,
+            i.e., without the PGV and PGD scale factors) and the standard
+            deviations
+        """
+        if im == "psa":
+            take = self._take_psa
+        else:
+            index = {
+                "pga": self.INDEX_PGA,
+                "pgv": self.INDEX_PGV,
+                "pgd": self.INDEX_PGD,
+            }.get(im, False)
+            if index is False:
+                raise ValueError(
+                    f'im must be "pga", "pgv", "pgd", or "psa", not {im!r}'
+                )
+            if index is None:
+                raise NotImplementedError
+
+            def take(values):
+                return self._take(values, index, im)
+
+        return [
+            (w, take(ln_resp), None if ln_std is None else take(ln_std))
+            for w, ln_resp, ln_std in self._branch_list()
+        ]
+
     def _check_psa_computed(self) -> None:
         # Without ims, models keep their previous behavior (e.g., empty arrays
         # for models without spectral accelerations)
@@ -788,6 +848,50 @@ class CategoricalParameter(Parameter):
             value = self.default
 
         return value
+
+
+def symmetric_branches(
+    ln_resp: ArrayLike, ln_std: ArrayLike, delta: ArrayLike, weights
+) -> list:
+    r"""Branches of a symmetric three-point logic tree of the median.
+
+    The branches have medians of :math:`\mu - \delta`, :math:`\mu`, and
+    :math:`\mu + \delta` (e.g., the USGS 5th, 50th, and 95th percentile
+    epistemic branches of nshmp-lib, ``GroundMotions.createTree``), where
+    :math:`\mu` is found from the collapsed median, :math:`\ln \sum_i w_i
+    \exp(\mu_i)`, and all branches have the same standard deviation.
+
+    Parameters
+    ----------
+    ln_resp : array_like
+        natural log of the collapsed median
+    ln_std : array_like
+        standard deviation (natural log units)
+    delta : array_like
+        change of the natural log of the median of the lower and upper branches
+    weights : sequence of float
+        weights of the lower, central, and upper branches (the lower and upper
+        weights are equal)
+
+    Returns
+    -------
+    branches : list of tuple
+        (weight, ln_resp, ln_std) of the lower, central, and upper branches
+    """
+    w_lo, w_mid, w_hi = weights
+    ln_resp = np.asarray(ln_resp, dtype=float)
+    delta = np.asarray(delta, dtype=float)
+    ln_mid = ln_resp - np.log(w_lo * np.exp(-delta) + w_mid + w_hi * np.exp(delta))
+    shape = np.broadcast_shapes(ln_mid.shape, np.shape(ln_std))
+    ln_std = np.array(np.broadcast_to(ln_std, shape), dtype=float)
+    return [
+        (
+            w,
+            np.array(np.broadcast_to(ln_mid + sign * delta, shape), dtype=float),
+            ln_std,
+        )
+        for w, sign in zip(weights, (-1.0, 0.0, 1.0))
+    ]
 
 
 def take_periods(values: ArrayLike, index) -> np.ndarray:

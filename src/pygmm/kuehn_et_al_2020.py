@@ -135,7 +135,11 @@ class KuehnEtAl2020(model.GroundMotionModel):
     Kuehn et al. (global, Cascadia, or Alaska; PRVI uses the global tables).
     The branches are collapsed to a single median, :math:`\\ln \\sum_i w_i
     \\exp(\\mu_i)`, and the standard deviation, which is the same for all
-    branches. nshmp-lib interpolates the tables linearly in magnitude (with
+    branches. The collapsed values are not suitable for hazard calculations,
+    which should sum the weighted exceedance probabilities of the branches,
+    as nshmp-lib does; the branches are given by
+    :meth:`~pygmm.model.GroundMotionModel.ln_branches`. nshmp-lib interpolates
+    the tables linearly in magnitude (with
     the magnitude limited to 4 to 9.5) and is meant to interpolate in the
     logarithm of the distance, but its distance lookup compares the base-10
     logarithm of the distance with the distances of the tables (10 to 1000 km)
@@ -286,9 +290,14 @@ class KuehnEtAl2020(model.GroundMotionModel):
         self._m9 = bool(m9)
         self._ak_adjusted = bool(ak_adjusted)
         self._epistemic = bool(epistemic)
+        self._epi_delta = None
         if self._m9 and not self._seattle_basin:
             raise ValueError("m9=True requires seattle_basin=True")
         self._ln_resp, self._ln_std = self._calc()
+        if self._epistemic:
+            self._branches = model.symmetric_branches(
+                self._ln_resp, self._ln_std, self._epi_delta, self.EPI_WEIGHTS
+            )
 
     @property
     def basin(self) -> bool:
@@ -400,6 +409,7 @@ class KuehnEtAl2020(model.GroundMotionModel):
             #   = mu + ln(sum_i w_i exp(delta_i))
             w_lo, w_mid, w_hi = self.EPI_WEIGHTS
             delta = self.EPI_Z_SCORE * psi
+            self._epi_delta = delta
             ln_resp = ln_resp + np.log(
                 w_lo * np.exp(-delta) + w_mid + w_hi * np.exp(delta)
             )

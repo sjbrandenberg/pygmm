@@ -87,8 +87,12 @@ class ParkerEtAl2020(model.GroundMotionModel):
       weights of 0.185, 0.63, and 0.185. As in nshmp-lib
       (``GroundMotions.combine``), the branches are collapsed to a single
       median, :math:`\\ln \\sum_i w_i \\exp(\\mu_i)`, and the standard
-      deviation, which is the same for all branches. With ``epistemic=False``,
-      the central branch is used (as in the nshmp-lib ``*_NO_EPI`` variants).
+      deviation, which is the same for all branches. The collapsed values are
+      not suitable for hazard calculations, which should sum the weighted
+      exceedance probabilities of the branches, as nshmp-lib does; the
+      branches are given by :meth:`~pygmm.model.GroundMotionModel.ln_branches`.
+      With ``epistemic=False``, the central branch is used (as in the
+      nshmp-lib ``*_NO_EPI`` variants).
 
     The nshmp-lib ``Gmm`` ids correspond to the ``event_type`` and ``region``
     scenario values and the model options as follows:
@@ -293,7 +297,12 @@ class ParkerEtAl2020(model.GroundMotionModel):
         self._ak_adjusted = bool(ak_adjusted)
         self._m9 = bool(m9)
         self._epistemic = bool(epistemic)
+        self._epi_delta = None
         self._ln_resp, self._ln_std = self._calc()
+        if self._epistemic:
+            self._branches = model.symmetric_branches(
+                self._ln_resp, self._ln_std, self._epi_delta, self.EPI_WEIGHTS
+            )
 
     @property
     def basin(self) -> bool:
@@ -611,6 +620,7 @@ class ParkerEtAl2020(model.GroundMotionModel):
             # Collapse the branches: ln(sum_i w_i exp(mu + delta_i))
             #   = mu + ln(sum_i w_i exp(delta_i))
             delta = self.EPI_Z_SCORE * self._calc_epistemic(v, periods)
+            self._epi_delta = delta
             w_lo, w_mid, w_hi = self.EPI_WEIGHTS
             ln_resp = ln_resp + np.log(
                 w_lo * np.exp(-delta) + w_mid + w_hi * np.exp(delta)

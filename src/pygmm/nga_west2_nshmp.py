@@ -30,7 +30,11 @@ class has the model options that select the nshmp-lib ``Gmm`` variants, and
   0.185, 0.63, and 0.185. As in nshmp-lib (``GroundMotions.combine``), the
   branches are collapsed to a single median, :math:`\ln \sum_i w_i
   \exp(\mu_i)`, and the standard deviation, which is the same for all
-  branches. The ``_BASE``, ``_VS30_MEASURED``, and ``_PRVI`` variants have
+  branches. The collapsed values are not suitable for hazard calculations,
+  which should sum the weighted exceedance probabilities of the branches, as
+  nshmp-lib does (``ExceedanceModel.treeExceedanceCombined``); the branches
+  are given by :meth:`~pygmm.model.GroundMotionModel.ln_branches`. The
+  ``_BASE``, ``_VS30_MEASURED``, and ``_PRVI`` variants have
   ``epistemic=False``.
 - ``basin`` (``_BASIN``): the USGS deep basin model, which keeps the basin
   (sediment depth) term of the model only for spectral periods longer than
@@ -336,10 +340,21 @@ class _NgaWest2NshmpBase(model.GroundMotionModel):
         self._periods = self.PERIODS[self._rows]
         ln_resp, ln_std = self._calc()
         if self._epistemic:
-            ln_resp = ln_resp + epistemic_ln_factor(
-                model.as_column(self._value("mag")),
-                model.as_column(self._value("dist_jb")),
-            )
+            mag = model.as_column(self._value("mag"))
+            dist_jb = model.as_column(self._value("dist_jb"))
+            eps = epistemic_epsilon(mag, dist_jb)
+            shape = np.broadcast_shapes(np.shape(ln_resp), np.shape(ln_std), eps.shape)
+            ln_std_b = np.array(np.broadcast_to(ln_std, shape), dtype=float)
+            # Epistemic branches (nshmp-lib GroundMotions.createNgaTree)
+            self._branches = [
+                (
+                    w,
+                    np.array(np.broadcast_to(ln_resp + sign * eps, shape), dtype=float),
+                    ln_std_b,
+                )
+                for w, sign in zip(EPI_WTS, (-1.0, 0.0, 1.0))
+            ]
+            ln_resp = ln_resp + epistemic_ln_factor(mag, dist_jb)
         # Some terms do not depend on all of the scenario values
         shape = np.broadcast_shapes(np.shape(ln_resp), np.shape(ln_std))
         self._ln_resp = np.array(np.broadcast_to(ln_resp, shape), dtype=float)
@@ -1628,7 +1643,9 @@ class NgaWest2NshmpTree(model.GroundMotionModel):
     \sum_i w_i \exp(\mu_i)`, and standard deviation, :math:`\sqrt{\sum_i w_i
     \sigma_i^2}`. The collapsed values are suitable for comparisons, not for
     hazard calculations, which should use the individual models and
-    epistemic branches.
+    epistemic branches (:meth:`~pygmm.model.GroundMotionModel.ln_branches`
+    gives all of the branches, with the products of the model and epistemic
+    weights).
 
     Parameters
     ----------
@@ -1713,10 +1730,14 @@ class NgaWest2NshmpTree(model.GroundMotionModel):
         super().__init__(scenario, ims)
         sum_resp = 0.0
         sum_var = 0.0
+        self._branches = []
         for cls, options, weight in self.TREES[tree]:
             assert np.array_equal(cls.PERIODS, self.PERIODS)
             m = cls(self._scenario, ims=ims, **options)
             sum_resp = sum_resp + weight * np.exp(m._ln_resp)
             sum_var = sum_var + weight * m._ln_std * m._ln_std
+            self._branches += [
+                (weight * w, ln_resp, ln_std) for w, ln_resp, ln_std in m._branch_list()
+            ]
         self._ln_resp = np.log(sum_resp)
         self._ln_std = np.sqrt(sum_var)
