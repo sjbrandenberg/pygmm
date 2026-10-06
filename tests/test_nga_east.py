@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import pygmm
 from pygmm import nga_east
 from pygmm.model import Scenario
 from pygmm.nga_east import NgaEast
@@ -736,3 +737,57 @@ def test_ln_pga(ims):
     assert m.ln_pga.shape == (500,)
     np.testing.assert_array_equal(np.exp(m.ln_pga), m.pga)
     np.testing.assert_array_equal(m.ln_pga, NgaEast(s, cpa=True).ln_pga)
+
+
+@pytest.mark.parametrize(
+    "cls, options",
+    [
+        (pygmm.NgaEast, dict()),
+        (pygmm.NgaEast, dict(version="2026", cpa=True)),
+        (pygmm.NgaEast, dict(version="2023", adjusted=True)),
+        (pygmm.NgaEastSeeds, dict(version="2026", cpa=True)),
+        (pygmm.NgaEastSeeds, dict(version="2026", adjusted=True)),
+    ],
+)
+def test_ln_branches(cls, options):
+    # nshmp-lib logic tree: median models x (EPRI 0.8, panel 0.2) standard deviations;
+    # collapsing it as GroundMotions.combine gives the model's ln_pga and ln_std_pga
+    s = pygmm.Scenario(
+        mag=np.array([7.5, 7.0, 5.5]),
+        dist_rup=np.array([11.0, 90.0, 10.0]),
+        dist_jb=np.array([10.0, 90.0, 9.0]),
+        v_s30=760.0,
+        depth_sed=0.9,
+    )
+    m = cls(s, ims=["pga"], **options)
+    branches = m.ln_branches("pga")
+    n_means = 17 if cls is pygmm.NgaEast else 14
+    assert len(branches) == 2 * n_means
+    weights = np.array([b[0] for b in branches])
+    np.testing.assert_allclose(weights.sum(), 1.0)
+    np.testing.assert_allclose(weights[1::2] / weights[0::2], 0.25)
+    for _, ln_mean, ln_std in branches:
+        assert ln_mean.shape == (3,) and ln_std.shape == (3,)
+    np.testing.assert_allclose(
+        np.log(sum(w * np.exp(mu) for w, mu, _ in branches)), m.ln_pga
+    )
+    np.testing.assert_allclose(
+        np.sqrt(sum(w * sd**2 for w, _, sd in branches)), m.ln_std_pga
+    )
+    # the median models span about 2 (NgaEast) and 0.7 to 1.6 (seeds) natural log units
+    means = np.array([mu for _, mu, _ in branches])
+    assert np.all(means.max(axis=0) - means.min(axis=0) > 0.5)
+
+
+def test_ln_branches_period_weights():
+    # the weights of the 17 median models depend on the period
+    m = pygmm.NgaEast(pygmm.Scenario(mag=6.5, dist_rup=20.0, v_s30=760.0))
+    psa = m.ln_branches("psa")
+    assert np.shape(psa[0][0]) == np.shape(m.periods)
+    np.testing.assert_allclose(sum(w for w, _, _ in psa), 1.0)
+    pga = m.ln_branches("pga")
+    assert np.ndim(pga[0][0]) == 0
+    assert not np.allclose([w for w, _, _ in psa][0], pga[0][0])
+    # an individual seed model is a single branch (nshmp-lib combines its sigma)
+    seed = pygmm.NgaEastSeed(pygmm.Scenario(mag=6.5, dist_rup=20.0, dist_jb=20.0, v_s30=760.0))
+    assert len(seed.ln_branches("pga")) == 1

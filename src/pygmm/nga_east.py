@@ -566,6 +566,43 @@ class _NgaEastBase(model.GroundMotionModel):
             }
         )
 
+    def _set_branches(self, ln_resps, mean_wts):
+        """Store the logic tree of ground motions of nshmp-lib.
+
+        nshmp-lib gives a logic tree of ground motions: the median models times
+        the updated EPRI (2013) and panel standard deviation models (weights of
+        0.8 and 0.2), and the hazard is the weighted sum of the exceedance
+        probabilities of the branches (``ExceedanceModel.treeExceedanceCombined``).
+
+        Parameters
+        ----------
+        ln_resps : list of :class:`np.ndarray`
+            natural log of the response of each median model, with periods along
+            the last axis
+        mean_wts : list of array_like
+            weight of each median model (a scalar or one value per computed period)
+        """
+        s = self._scenario
+        c = self._coeffs()
+        mag = model.as_column(np.asarray(s.mag, dtype=float))
+        v_s30 = model.as_column(np.asarray(s.v_s30, dtype=float))
+        shape = np.shape(self._ln_resp)
+        sigmas = [
+            np.broadcast_to(sigma_epri(c, mag), shape).copy(),
+            np.broadcast_to(sigma_panel(c, mag, v_s30), shape).copy(),
+        ]
+        mean_wts = [np.asarray(w, dtype=float) for w in mean_wts]
+        total = sum(mean_wts)
+        self._branches = [
+            (
+                float(w_m / total * w_s) if np.ndim(w_m) == 0 else w_m / total * w_s,
+                np.broadcast_to(ln_resp, shape).copy(),
+                sigma,
+            )
+            for ln_resp, w_m in zip(ln_resps, mean_wts)
+            for sigma, w_s in zip(sigmas, SIGMA_WTS)
+        ]
+
     def _depth_sed(self):
         depth_sed = self._scenario.depth_sed
         return np.nan if depth_sed is None else np.asarray(depth_sed, dtype=float)
@@ -694,7 +731,14 @@ class NgaEast(_NgaEastBase):
     variances, :math:`\sqrt{0.8 \sigma_{EPRI}^2 + 0.2 \sigma_{panel}^2}`. In
     contrast, nshmp-haz (and :class:`NgaEastUsgs2017`) uses the weighted mean
     of the standard deviations, which is up to about 0.004 smaller. The
-    standard deviation is the same for all versions.
+    standard deviation is the same for all versions. The collapsed values are
+    not suitable for hazard calculations: nshmp-lib sums the weighted
+    exceedance probabilities of the 34 branches
+    (``ExceedanceModel.treeExceedanceCombined``), whose medians span about 2
+    natural log units, so the mixture has a much heavier upper tail than the
+    collapsed distribution. The branches (with the period-dependent weights of
+    the median models) are given by
+    :meth:`~pygmm.model.GroundMotionModel.ln_branches`.
 
     The model is vectorized. Each scenario value (``mag``, ``dist_rup``,
     ``v_s30``, ``dist_jb``, and ``depth_sed``) can be a scalar or an array, and
@@ -813,6 +857,7 @@ class NgaEast(_NgaEastBase):
         super().__init__(scenario, ims)
         self._ln_resp = self._calc_ln_resp()
         self._ln_std = self._calc_ln_std()
+        self._set_branches(*self._branch_args)
 
     def _calc_ln_resp(self) -> np.ndarray:
         """Calculate the natural logarithm of the response.
@@ -843,6 +888,7 @@ class NgaEast(_NgaEastBase):
         frac_m_col = model.as_column(frac_m)
         # Weighted sum of the linear response of the 17 models
         sum_resp = 0
+        branch_resps, branch_wts = [], []
         for i in range(len(tables)):
             ln_resp_rock = NgaEastUsgs2017._interpolate(
                 tables[i], index, frac_r_col, frac_m_col
@@ -854,6 +900,9 @@ class NgaEast(_NgaEastBase):
                 c, terms, version, ln_resp_rock, ln_pga_rock, mu_adj, cpa_terms
             )
             sum_resp = sum_resp + resp * weights[:, i]
+            branch_resps.append(np.log(resp))
+            branch_wts.append(np.asarray(weights[:, i], dtype=float))
+        self._branch_args = (branch_resps, branch_wts)
 
         return np.log(sum_resp)
 
@@ -1184,6 +1233,11 @@ class NgaEastSeeds(_NgaEastSeedBase):
       and the Chapman and Guo (2021) coastal plain amplification
       (``cpa=True``), which are applied to each seed as in :class:`NgaEast`.
 
+    As for :class:`NgaEast`, nshmp-lib gives a logic tree of ground motions (the
+    14 seeds times the EPRI and panel standard deviation models), which
+    :meth:`~pygmm.model.GroundMotionModel.ln_branches` returns; ``ln_pga`` etc.
+    are the collapsed values.
+
     The nshmp-lib ``Gmm`` identifiers are (see :attr:`GMM_IDS`):
 
     ================================  =========================================
@@ -1332,6 +1386,7 @@ class NgaEastSeeds(_NgaEastSeedBase):
         self._skip_pgv()
         self._ln_resp = self._calc_ln_resp()
         self._ln_std = self._calc_ln_std()
+        self._set_branches(*self._branch_args)
 
     def _calc_ln_resp(self) -> np.ndarray:
         """Calculate the natural logarithm of the response.
@@ -1347,6 +1402,7 @@ class NgaEastSeeds(_NgaEastSeedBase):
         terms, mu_adj, cpa_terms = self._site_setup(c)
         # Weighted sum of the linear response of the 14 seed models
         sum_resp = 0
+        branch_resps, branch_wts = [], []
         for seed, weight in self.SEED_WEIGHTS.items():
             ln_resp_rock, ln_pga_rock = self._seed_ln_rock(
                 seed, mag, dist_rup, dist_jb, position
@@ -1355,6 +1411,9 @@ class NgaEastSeeds(_NgaEastSeedBase):
                 c, terms, self.version, ln_resp_rock, ln_pga_rock, mu_adj, cpa_terms
             )
             sum_resp = sum_resp + resp * weight
+            branch_resps.append(np.log(resp))
+            branch_wts.append(weight)
+        self._branch_args = (branch_resps, branch_wts)
         return np.log(sum_resp)
 
     def _calc_ln_std(self) -> np.ndarray:

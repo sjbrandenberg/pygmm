@@ -602,7 +602,9 @@ class GroundMotionModel(Model):
             (weight, ln_mean, ln_std) of each branch, where ln_mean and ln_std
             are the natural logs of the median (in the units of ``ln_pga`` etc.,
             i.e., without the PGV and PGD scale factors) and the standard
-            deviations
+            deviations. Models whose branch weights depend on the period (e.g.,
+            :class:`~pygmm.nga_east.NgaEast`) store them per computed period, and
+            the weights of "psa" are then arrays with one value per period
         """
         if im == "psa":
             take = self._take_psa
@@ -623,7 +625,11 @@ class GroundMotionModel(Model):
                 return self._take(values, index, im)
 
         return [
-            (w, take(ln_resp), None if ln_std is None else take(ln_std))
+            (
+                w if np.ndim(w) == 0 else take(np.asarray(w, dtype=float)),
+                take(ln_resp),
+                None if ln_std is None else take(ln_std),
+            )
             for w, ln_resp, ln_std in self._branch_list()
         ]
 
