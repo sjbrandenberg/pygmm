@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """Test cases for Pinilla-Ramos et al. (2023) duration model."""
 
+import functools
 import gzip
 import itertools
 import json
@@ -13,6 +14,10 @@ from numpy.testing import assert_allclose
 
 import pygmm
 from pygmm.ground_motion import PinillaRamosEtAl2023
+
+# Vectorized and scalar results can differ in the last bit, because NumPy's
+# SIMD loops may round differently than its scalar functions on some CPUs
+assert_close = functools.partial(np.testing.assert_allclose, rtol=1e-12, atol=0)
 
 # Load test data
 fpath = os.path.join(
@@ -266,7 +271,7 @@ def grid():
 def test_vectorized_matches_scalar(grid, name):
     rows, actual, expected = grid
     assert actual[name].shape == (len(rows),)
-    np.testing.assert_array_equal(actual[name], [e[name] for e in expected])
+    assert_close(actual[name], [e[name] for e in expected])
 
 
 @pytest.mark.parametrize("energy", ENERGIES)
@@ -275,8 +280,8 @@ def test_vectorized_energy_matches_scalar(grid, energy):
     assert len(actual[energy]) == 3
     for i, values in enumerate(actual[energy]):
         assert values.shape == (len(rows),)
-        # assert_array_equal treats NaN (minus sigma at low energies) as equal
-        np.testing.assert_array_equal(values, [e[energy][i] for e in expected])
+        # assert_close treats NaN (minus sigma at low energies) as equal
+        assert_close(values, [e[energy][i] for e in expected])
 
 
 def test_vectorized_minus_sigma_nan_matches_scalar(grid):
@@ -298,12 +303,12 @@ def test_scalars_broadcast_with_arrays():
     m = PinillaRamosEtAl2023(pygmm.model.Scenario(mag=mag, dist_rup=20.0, v_s30=400.0))
     for name in OUTPUTS:
         expected = [scalar_results(mg, 20.0, 400.0)[name] for mg in mag]
-        np.testing.assert_array_equal(getattr(m, name), expected)
+        assert_close(getattr(m, name), expected)
     median, plus, minus = m.duration_for_energy(0.95)
     expected = [scalar_results(mg, 20.0, 400.0)[0.95] for mg in mag]
-    np.testing.assert_array_equal(median, [e[0] for e in expected])
-    np.testing.assert_array_equal(plus, [e[1] for e in expected])
-    np.testing.assert_array_equal(minus, [e[2] for e in expected])
+    assert_close(median, [e[0] for e in expected])
+    assert_close(plus, [e[1] for e in expected])
+    assert_close(minus, [e[2] for e in expected])
 
 
 def test_multidimensional_inputs():
@@ -317,8 +322,8 @@ def test_multidimensional_inputs():
         assert getattr(m, name).shape == (3, 4)
     assert all(v.shape == (3, 4) for v in m.duration_for_energy(0.45))
     expected = scalar_results(7.5, 20.0, 400.0)
-    assert m.duration[2, 1] == expected["duration"]
-    assert m.duration_for_energy(0.45)[0][2, 1] == expected[0.45][0]
+    assert_close(m.duration[2, 1], expected["duration"])
+    assert_close(m.duration_for_energy(0.45)[0][2, 1], expected[0.45][0])
 
 
 def test_lists_are_accepted():
@@ -329,7 +334,7 @@ def test_lists_are_accepted():
         scalar_results(6.0, 10.0, 400.0)["duration"],
         scalar_results(7.0, 50.0, 400.0)["duration"],
     ]
-    np.testing.assert_array_equal(m.duration, expected)
+    assert_close(m.duration, expected)
 
 
 def test_mismatched_lengths_raise():

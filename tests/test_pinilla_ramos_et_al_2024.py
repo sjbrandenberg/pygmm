@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for Pinilla-Ramos et al. (2024) subduction duration model."""
 
+import functools
 import itertools
 import os
 import warnings
@@ -14,6 +15,10 @@ from pygmm.ground_motion.pinilla_ramos_et_al_2024 import (
     PinillaRamosEtAl2024,
     duration_model,
 )
+
+# Vectorized and scalar results can differ in the last bit, because NumPy's
+# SIMD loops may round differently than its scalar functions on some CPUs
+assert_close = functools.partial(np.testing.assert_allclose, rtol=1e-12, atol=0)
 
 
 class TestPinillaRamosEtAl2024:
@@ -470,13 +475,11 @@ def test_vectorized_matches_scalar(grid):
         if key[0] == "duration_for_energy":
             assert isinstance(value, tuple) and len(value) == 3
             for i in range(3):
-                np.testing.assert_array_equal(
+                assert_close(
                     value[i], np.array([e[key][i] for e in expected]), err_msg=str(key)
                 )
         else:
-            np.testing.assert_array_equal(
-                value, np.array([e[key] for e in expected]), err_msg=str(key)
-            )
+            assert_close(value, np.array([e[key] for e in expected]), err_msg=str(key))
 
 
 def test_vectorized_shapes(grid):
@@ -523,11 +526,11 @@ def test_scalars_broadcast_with_arrays():
         expected = scalar_results(
             ["Japan", "Taiwan", "New Zealand"][i], "slab", mag_i, 120.0, 500.0
         )
-        assert m.duration[i] == expected["duration"]
-        assert m.d575_sigma[i] == expected["d575_sigma"]
-        assert (
-            m.duration_for_energy(0.95)[2][i]
-            == expected[("duration_for_energy", 0.95)][2]
+        assert_close(m.duration[i], expected["duration"])
+        assert_close(m.d575_sigma[i], expected["d575_sigma"])
+        assert_close(
+            m.duration_for_energy(0.95)[2][i],
+            expected[("duration_for_energy", 0.95)][2],
         )
 
 
@@ -572,10 +575,10 @@ def test_multidimensional_inputs():
             if key[0] == "duration_for_energy":
                 for k in range(3):
                     assert value[k].shape == (3, 4)
-                    assert value[k][i, j] == expected[key][k], key
+                    assert_close(value[k][i, j], expected[key][k], err_msg=str(key))
             else:
                 assert value.shape == (3, 4)
-                assert value[i, j] == expected[key], key
+                assert_close(value[i, j], expected[key], err_msg=str(key))
 
 
 def scenario_with(region, event_type):
@@ -670,7 +673,7 @@ def test_duration_model_arrays(grid, energy):
     )
     assert len(actual) == 3
     for i in range(3):
-        np.testing.assert_array_equal(
+        assert_close(
             actual[i],
             np.array([e[("duration_for_energy", energy)][i] for e in expected]),
         )
@@ -687,7 +690,7 @@ def test_duration_model_scalars(energy):
     expected = m.duration_for_energy(energy)
     for a, e in zip(actual, expected):
         assert a.shape == (1,)
-        assert a[0] == e
+        assert_close(a[0], e)
 
 
 def test_duration_model_broadcasts():
@@ -720,7 +723,7 @@ def test_d5x_matches_duration_for_energy(event_type, region, threshold):
     energy = int(threshold[3:]) / 100
     median, plus, _ = m.duration_for_energy(energy)
     n = 0.15 if event_type == "interface" else 0.25
-    np.testing.assert_array_equal(m.d5x_median(threshold), median)
+    assert_close(m.d5x_median(threshold), median)
     np.testing.assert_allclose(
         (m.d5x_median(threshold) ** n + m.d5x_sigma(threshold)) ** (1 / n),
         plus,
