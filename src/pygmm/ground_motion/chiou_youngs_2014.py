@@ -38,9 +38,8 @@ class ChiouYoungs2014(usgs.NshmpOptions, model.GroundMotionModel):
 
     - applies the hanging-wall term for sites with :math:`R_x \\ge 0` if
       ``on_hanging_wall`` is not given,
-    - has no basin term if ``depth_1_0`` is *None* or NaN, and uses 571 m/sec
-      instead of 570.94 m/sec in the reference :math:`Z_{1.0}` (the published
-      model uses 570.94 m/sec, as BSSA14),
+    - has no basin term if ``depth_1_0`` is *None* or NaN, and always uses the
+      California reference :math:`Z_{1.0}`,
     - has no directivity term (``dpp_centered`` is not used),
     - and uses the aleatory variability for an inferred :math:`V_{S30}` if
       ``vs_source`` is not given.
@@ -569,6 +568,8 @@ class ChiouYoungs2014(usgs.NshmpOptions, model.GroundMotionModel):
     def calc_depth_1_0(v_s30: float, region: str) -> float:
         """Calculate the depth to 1 km/sec (:math:`Z_{1.0}`).
 
+        Equations 1 (California) and 2 (Japan) of Chiou and Youngs (2014).
+
         Parameters
         ----------
         v_s30 : float or array_like
@@ -593,12 +594,12 @@ class ChiouYoungs2014(usgs.NshmpOptions, model.GroundMotionModel):
         if region in ["japan"]:
             # Japan
             power = 2
-            v_ref = 412.39
+            v_ref = 412.0
             slope = -5.23 / power
         else:
             # Global
             power = 4
-            v_ref = 570.94
+            v_ref = 571.0
             slope = -7.15 / power
 
         return (

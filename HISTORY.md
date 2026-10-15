@@ -161,6 +161,13 @@ title: History
 - Fixed: Boore et al. (2014) used the global relation for the reference depth to 1.0 km/s for the
   Japan region. It now uses the Japan relation, which changes the basin term at periods of 0.65 s
   and longer for `region="japan"` with `depth_1_0` specified.
+- Fixed: Chiou and Youngs (2014) used the Boore et al. (2014) reference velocities (570.94 and
+  412.39 m/s) in the average depth to 1.0 km/s (`calc_depth_1_0`), instead of the 571 and 412 m/s
+  of Equations 1 and 2 in the paper. This changes the basin term by up to 0.002 in ln when
+  `depth_1_0` is given. Boore et al. (2014) keeps its own 570.94 and 412.39 m/s.
+- Fixed: Abrahamson et al. (2014) used a V1 of 801.2 m/s for periods of 3 s and longer, from
+  extending the log-linear transition, instead of the 800 m/s of Equation 9. This changes the
+  site term by up to 0.0014 in ln for `v_s30` above 800 m/s.
 - Fixed: Pezeshk et al. (2011) used the standard deviation in log10 units as a natural log standard
   deviation. It is now converted to natural log units (multiplied by ln(10)), as in OpenQuake,
   e.g., 0.58 instead of 0.25 for PGA at M6.

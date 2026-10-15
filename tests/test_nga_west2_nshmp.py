@@ -1336,17 +1336,15 @@ def test_published_models():
     The differences are explained by the published models' treatment of
     some inputs, coefficient revisions, and nshmp-lib details:
 
-    - ASK14: the published model uses the continuous V_1 of equation 9 at 3 s
-      and longer (801.2 instead of 800 m/sec), which matters for V_s30 > 800
-      m/sec.
+    - ASK14: nshmp-lib uses a hanging-wall dip taper of 1.33333333 instead of
+      4 / 3.
     - BSSA14: nshmp-lib uses rounded coefficients (e.g., c_2 at 1.5, 2, and
       3 s, c, f_4, f_6, and f_7) and different f_4 values at 0.05, 0.075,
       0.5, and 1.5 s than the published model (revised 2014-07-15
       coefficients).
     - CB14: the reference rock Z_2.5 is 0.398 km in nshmp-lib, and the PGA
       limit of the short periods uses the reference rock PGA of the period.
-    - CY14: the published model uses 570.94 m/sec instead of 571 m/sec in the
-      reference Z_1.0.
+    - CY14: none (both use 571 m/sec in the reference Z_1.0, as in the paper).
     """
     inp = NSHMP[NSHMP["gmm"] == "ASK_14_BASE"].drop_duplicates("index")
     inp = inp.sort_values("index").reset_index(drop=True)
@@ -1435,13 +1433,11 @@ def test_published_models():
         diff = ln_resp - np.log(ref.values)
         diff_sigma = ln_std - ref_sigma.values
         if name == "ASK":
-            # V_1 at 3 s
-            other = (v_s30[:, np.newaxis] > 800) & (np.array(periods) >= 3)
-            np.testing.assert_allclose(diff[other], -0.001418, atol=1e-6)
             # Hanging-wall dip taper of 1.33333333 instead of 4 / 3
-            low_dip = ~other & (inp["dip"].values <= 30)[:, np.newaxis]
-            assert np.max(np.abs(diff[low_dip])) < 2e-9
-            other |= low_dip
+            other = np.repeat(
+                (inp["dip"].values <= 30)[:, np.newaxis], len(periods), axis=1
+            )
+            assert np.max(np.abs(diff[other])) < 2e-9
         elif name == "BSSA":
             # Rounded coefficients (e.g., c_2 at 3 s and c)
             other = np.ones(diff.shape, dtype=bool)
@@ -1455,9 +1451,8 @@ def test_published_models():
             assert np.max(np.abs(diff[~other])) < 3e-6
             other[:] = True
         else:
-            # CY14: reference Z_1.0
-            other = np.repeat(~np.isnan(z1)[:, np.newaxis], len(periods), axis=1)
-            assert np.max(np.abs(diff[other])) < 2e-3
+            # CY14: no differences
+            other = np.zeros(diff.shape, dtype=bool)
         # Rounding of the reference medians to 10 decimals
         tol = ATOL / ref.values + 1e-10
         assert np.all(np.abs(diff[~other]) <= tol[~other]), name

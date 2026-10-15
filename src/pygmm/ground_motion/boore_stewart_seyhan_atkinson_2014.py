@@ -8,9 +8,36 @@ from .. import model
 from .._types import ArrayLike
 from ..registry import register
 from . import nshmp as usgs
-from .chiou_youngs_2014 import ChiouYoungs2014 as CY14
 
 __author__ = "Albert Kottke"
+
+
+def calc_depth_1_0(v_s30: ArrayLike, region: ArrayLike) -> np.ndarray:
+    """Average depth to 1 km/sec (:math:`Z_{1.0}`, km) of the basin term.
+
+    Equation 11 of Boore et al. (2014), which follows Chiou and Youngs (2014)
+    but with reference velocities of 570.94 m/sec (California) and 412.39
+    m/sec (Japan), instead of their 571 and 412 m/sec.
+
+    Parameters
+    ----------
+    v_s30 : float or array_like
+        time-averaged shear-wave velocity over the top 30 m of the site
+        (:math:`V_{s30}`, m/s)
+    region : str or array_like
+        region; "japan" uses the Japan relation, and any other region the
+        California relation. An array of regions is broadcast against `v_s30`.
+
+    Returns
+    -------
+    depth_1_0 : :class:`np.ndarray`
+        average depth to a shear-wave velocity of 1 km/sec (km)
+    """
+    v_s30 = np.asarray(v_s30, dtype=float)
+    japan = model.equals(region, "japan")
+    ln_z1_cal = (-7.15 / 4) * np.log((v_s30**4 + 570.94**4) / (1360.0**4 + 570.94**4))
+    ln_z1_jpn = (-5.23 / 2) * np.log((v_s30**2 + 412.39**2) / (1360.0**2 + 412.39**2))
+    return np.exp(np.where(japan, ln_z1_jpn, ln_z1_cal)) / 1000
 
 
 @register(tectonic="active_crustal")
@@ -400,7 +427,7 @@ class BooreStewartSeyhanAtkinson2014(usgs.NshmpOptions, model.GroundMotionModel)
         periods = c.period
         if depth_1_0 is None:
             depth_1_0 = np.nan
-        delta_depth_1_0 = depth_1_0 - CY14.calc_depth_1_0(v_s30, region)
+        delta_depth_1_0 = depth_1_0 - calc_depth_1_0(v_s30, region)
         if self._nshmp:
             # No basin term for NaN depths
             delta_depth_1_0 = np.where(np.isnan(depth_1_0), 0.0, delta_depth_1_0)
@@ -475,7 +502,7 @@ class BooreStewartSeyhanAtkinson2014(usgs.NshmpOptions, model.GroundMotionModel)
 
         # Compute the average from the Chiou and Youngs (2014)
         # model convert from m to km.
-        ln_mz1 = np.log(CY14.calc_depth_1_0(v_s30, region))
+        ln_mz1 = np.log(calc_depth_1_0(v_s30, region))
 
         if depth_1_0 is not None:
             delta_depth_1_0 = depth_1_0 - np.exp(ln_mz1)

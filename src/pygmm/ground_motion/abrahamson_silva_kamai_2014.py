@@ -47,9 +47,6 @@ class AbrahamsonSilvaKamai2014(usgs.NshmpOptions, model.GroundMotionModel):
       interpolates the basin slope in :math:`V_{S30}` between 150, 250, 400,
       700, and 1000 m/sec with linear extrapolation for :math:`V_{S30} <` 150
       m/sec,
-    - uses :math:`V_1` of 800 m/sec for periods of 3 s and longer (the
-      published model uses the continuous :math:`V_1` of equation 9, 801.2
-      m/sec),
     - uses the aleatory variability for an inferred :math:`V_{S30}` if
       ``vs_source`` is not given,
     - and treats an unspecified style of faulting (``mechanism`` of "U") as
@@ -491,12 +488,12 @@ class AbrahamsonSilvaKamai2014(usgs.NshmpOptions, model.GroundMotionModel):
     def _calc_v_1(c, nshmp: bool = False) -> np.ndarray:
         """Calculate the period dependent limiting velocity :math:`V_1` (m/s).
 
-        nshmp-lib uses 800 m/sec for periods of 3 s and longer.
+        Equation 9 of Abrahamson et al. (2014): 1500 m/sec for periods of 0.5 s
+        and shorter, 800 m/sec for periods of 3 s and longer, and a log-linear
+        transition in between. The same values are used with ``nshmp``.
         """
         v_1 = np.exp(-0.35 * np.log(np.clip(c.period, 0.5, 3) / 0.5) + np.log(1500))
-        if nshmp:
-            v_1 = np.where(c.period >= 3.0, 800.0, v_1)
-        return v_1
+        return np.where(c.period >= 3.0, 800.0, v_1)
 
     @staticmethod
     def _interp_coeffs(
