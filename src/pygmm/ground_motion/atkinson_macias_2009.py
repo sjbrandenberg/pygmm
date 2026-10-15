@@ -28,6 +28,7 @@ import numpy as np
 from .. import model
 from .._types import ArrayLike
 from ..registry import register
+from .campbell_bozorgnia_2014 import CampbellBozorgnia2014
 
 #: Natural log of 10 (``GmmUtils.BASE_10_TO_E``)
 LN_10 = np.log(10.0)
@@ -37,8 +38,9 @@ LN_G = np.log(980.0)
 #: Spectral periods (s) provided by the nshmp-lib subduction models
 PERIODS_SA = model.GroundMotionModel.PERIODS_NGAWEST2_21
 
-#: nshmp-lib Campbell and Bozorgnia (2014) coefficients (for the basin term)
-_COEFF_CB14 = model.load_data_file("campbell_bozorgnia_2014-nshmp.csv", 1)
+#: Campbell and Bozorgnia (2014) coefficients sorted by period (for the basin term),
+#: which are the same as the nshmp-lib coefficients
+_COEFF_CB14 = np.sort(CampbellBozorgnia2014.COEFF, order="period").view(np.recarray)
 
 # Abrahamson and Bhasin (2020) conditional PGV model (UsgsPgvSupport)
 _AB20_B1 = -4.09
@@ -105,7 +107,7 @@ def deep_basin_term(
         # CampbellBozorgnia_2014.calcBasinTerm for Z2.5 > 1 km
         term = np.where(
             depth_2_5 > 3.0,
-            c.c16 * c.k3 * np.exp(-0.75) * (1.0 - np.exp(-0.25 * (depth_2_5 - 3.0))),
+            c.c_16 * c.k_3 * np.exp(-0.75) * (1.0 - np.exp(-0.25 * (depth_2_5 - 3.0))),
             0.0,
         )
         f_basin = term * scale

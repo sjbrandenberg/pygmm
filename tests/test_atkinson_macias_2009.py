@@ -27,6 +27,7 @@ from pygmm.ground_motion.atkinson_macias_2009 import (
     interpolate_periods,
 )
 from pygmm.ground_motion.atkinson_macias_2009 import AtkinsonMacias2009 as AM09
+from pygmm.ground_motion.campbell_bozorgnia_2014 import CampbellBozorgnia2014
 from pygmm.ground_motion.zhao_et_al_2006 import bchydro_2012
 from pygmm.model import Scenario
 
@@ -131,7 +132,16 @@ def load_java_coeffs(name):
 
 COEFFS_AM09 = load_java_coeffs("atkinson_macias_2009-nshmp.csv")
 COEFFS_BA08 = load_java_coeffs("boore_atkinson_2008-nshmp.csv")
-COEFFS_CB14 = load_java_coeffs("campbell_bozorgnia_2014-nshmp.csv")
+# The CB14 basin coefficients of nshmp-lib (CB14.csv) are the same as the
+# published coefficients
+COEFFS_CB14 = {
+    float(row["period"]): {
+        "c14": float(row["c_14"]),
+        "c16": float(row["c_16"]),
+        "k3": float(row["k_3"]),
+    }
+    for row in CampbellBozorgnia2014.COEFF
+}
 COEFFS_BCHYDRO = load_java_coeffs("bchydro_2012-nshmp.csv")
 
 BASE_10_TO_E = math.log(10.0)

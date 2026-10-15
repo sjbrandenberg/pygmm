@@ -1,5 +1,5 @@
-# Chiou and Youngs (2014) Puerto Rico and U.S. Virgin Islands (PRVI) coefficients from USGS nshmp-lib (public domain, commit 44728a7d): src/main/resources/gmm/coeffs/CY14_PRVI.csv. Column T is renamed to period (s) with PGA as 0 and PGV as -1, and the rows are sorted by period.
-period,c1,phi1
+# Chiou and Youngs (2014) Puerto Rico and U.S. Virgin Islands (PRVI) coefficients from USGS nshmp-lib (public domain, commit 44728a7d): src/main/resources/gmm/coeffs/CY14_PRVI.csv. Column T is renamed to period (s) with PGA as 0 and PGV as -1, the coefficients are renamed (c1 as c_1, phi1 as phi_1), and the rows are sorted by period.
+period,c_1,phi_1
 -1,2.035926,-0.790785
 0,-1.751990,-0.680768
 0.01,-1.751990,-0.679588

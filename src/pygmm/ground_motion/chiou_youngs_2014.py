@@ -7,12 +7,13 @@ import numpy as np
 from .. import model
 from .._types import ArrayLike
 from ..registry import register
+from . import nshmp as usgs
 
 __author__ = "Albert Kottke"
 
 
 @register(tectonic="active_crustal")
-class ChiouYoungs2014(model.GroundMotionModel):
+class ChiouYoungs2014(usgs.NshmpOptions, model.GroundMotionModel):
     """Chiou and Youngs (2014, :cite:`chiou14`) model.
 
     This model was developed for active tectonic regions as part of the
@@ -29,6 +30,40 @@ class ChiouYoungs2014(model.GroundMotionModel):
     scenarios, they have shape (N, periods), so, for example, ``pga`` has
     shape (N,) and ``spec_accels`` has shape (N, 24).
 
+    The options select the variants of the model in the USGS nshmp-lib library
+    (``ChiouYoungs_2014``, commit 44728a7d; see
+    :mod:`pygmm.ground_motion.nshmp`), and are off by default, which gives the
+    published model. With ``nshmp=True``, the model is computed as in
+    nshmp-lib, which:
+
+    - applies the hanging-wall term for sites with :math:`R_x \\ge 0` if
+      ``on_hanging_wall`` is not given,
+    - has no basin term if ``depth_1_0`` is *None* or NaN, and uses 571 m/sec
+      instead of 570.94 m/sec in the reference :math:`Z_{1.0}` (the published
+      model uses 570.94 m/sec, as BSSA14),
+    - has no directivity term (``dpp_centered`` is not used),
+    - and uses the aleatory variability for an inferred :math:`V_{S30}` if
+      ``vs_source`` is not given.
+
+    nshmp-lib only has the California model, so ``region`` should not be given
+    with ``nshmp=True``. The nshmp-lib ``Gmm`` ids are (see :attr:`GMM_IDS`,
+    whose values include the ``vs_source`` scenario value):
+
+    ========================  =========================================
+    nshmp-lib ``Gmm``         Options
+    ========================  =========================================
+    ``CY_14``                 ``nshmp=True, epistemic=True``
+    ``CY_14_BASE``            ``nshmp=True``
+    ``CY_14_BASIN``           ``nshmp=True, epistemic=True, basin=True``
+    ``CY_14_CYBERSHAKE``      ``nshmp=True, epistemic=True, basin=True,
+                              cybershake=True``
+    ``CY_14_VS30_MEASURED``   ``nshmp=True`` (``vs_source="measured"``)
+    ``CY_14_PRVI``            ``nshmp=True, prvi=True``
+    ========================  =========================================
+
+    The other ids have ``vs_source="inferred"``. The PRVI coefficients are NaN
+    at 0.04, 0.12, and 0.17 s, which nshmp-lib does not provide.
+
     Parameters
     ----------
     scenario : :class:`pygmm.model.Scenario`
@@ -39,6 +74,17 @@ class ChiouYoungs2014(model.GroundMotionModel):
         periods), and/or "psa_all" (all 24 periods). Computing only
         the needed intensity measures is much faster for large vectorized
         scenarios. If *None* (default), all intensity measures are computed.
+    nshmp : bool, optional
+        compute the model as in nshmp-lib (default *False*)
+    epistemic : bool, optional
+        include the USGS epistemic branches (default *False*)
+    basin : bool, optional
+        use the USGS deep basin model (default *False*)
+    cybershake : bool, optional
+        use the CyberShake basin terms (default *False*, requires
+        ``basin=True``)
+    prvi : bool, optional
+        use the PRVI coefficients (default *False*)
 
     Examples
     --------
@@ -56,6 +102,17 @@ class ChiouYoungs2014(model.GroundMotionModel):
     >>> m.spec_accels.shape
     (2, 21)
 
+    The nshmp-lib ``CY_14_BASIN`` variant (with the hanging wall given by
+    ``dist_x``), with the ``vs_source`` of the id in the scenario:
+
+    >>> options = dict(pygmm.ChiouYoungs2014.GMM_IDS["CY_14_BASIN"])
+    >>> s = pygmm.Scenario(
+    ...     mag=np.array([6.0, 7.0]), dist_rup=np.array([10.0, 50.0]),
+    ...     dist_jb=np.array([8.0, 48.0]), dist_x=np.array([8.0, -48.0]),
+    ...     dip=60.0, depth_tor=2.0, mechanism="RS", v_s30=400.0,
+    ...     depth_1_0=np.array([np.nan, 0.6]), vs_source=options.pop("vs_source"))
+    >>> pygmm.ChiouYoungs2014(s, **options).spec_accels.shape
+    (2, 24)
     """
 
     NAME = "Chiou and Youngs (2014)"
@@ -68,6 +125,32 @@ class ChiouYoungs2014(model.GroundMotionModel):
     COEFF = model.load_data_file("chiou_youngs_2014.csv", 2)
 
     PERIODS = COEFF["period"]
+
+    #: nshmp-lib PRVI coefficients (NaN at 0.04, 0.12, and 0.17 s)
+    COEFF_PRVI = usgs.load_coeffs("chiou_youngs_2014-prvi.csv", PERIODS)
+    #: nshmp-lib CyberShake basin coefficients
+    COEFF_CYBERSHAKE = usgs.load_coeffs("chiou_youngs_2014-cybershake.csv", PERIODS)
+
+    #: Model options and scenario values of the nshmp-lib ``Gmm`` ids
+    GMM_IDS = {
+        "CY_14": dict(nshmp=True, epistemic=True, vs_source="inferred"),
+        "CY_14_BASE": dict(nshmp=True, vs_source="inferred"),
+        "CY_14_BASIN": dict(
+            nshmp=True, epistemic=True, basin=True, vs_source="inferred"
+        ),
+        "CY_14_CYBERSHAKE": dict(
+            nshmp=True,
+            epistemic=True,
+            basin=True,
+            cybershake=True,
+            vs_source="inferred",
+        ),
+        "CY_14_VS30_MEASURED": dict(nshmp=True, vs_source="measured"),
+        "CY_14_PRVI": dict(nshmp=True, prvi=True, vs_source="inferred"),
+    }
+
+    #: Reference velocity (m/sec) of the reference Z_1.0 in nshmp-lib
+    V_REF_Z1_NSHMP = 571.0
 
     INDICES_PSA = np.arange(24)
     INDEX_PGA = 24
@@ -93,15 +176,34 @@ class ChiouYoungs2014(model.GroundMotionModel):
         ),
     ]
 
-    def __init__(self, scenario: model.Scenario, ims=None):
+    def __init__(
+        self,
+        scenario: model.Scenario,
+        ims=None,
+        nshmp: bool = False,
+        epistemic: bool = False,
+        basin: bool = False,
+        cybershake: bool = False,
+        prvi: bool = False,
+    ):
         """Initialize the model."""
+        self._set_options(nshmp, epistemic, basin, cybershake, prvi)
         super().__init__(scenario, ims)
         # The nonlinear site term of each period depends on the reference
         # response at the same period, so only the requested periods are needed
-        c = self._coeff_rows(self.COEFF)
+        c = self._coeff_rows(self._options_coeff(self.COEFF))
         ln_resp_ref = self._calc_ln_resp_ref(c)
         self._ln_resp = self._calc_ln_resp_site(ln_resp_ref, c)
         self._ln_std, self._tau, self._phi = self._calc_ln_std(np.exp(ln_resp_ref), c)
+        if self._epistemic:
+            self._ln_resp, self._branches = usgs.epistemic_branches(
+                self._ln_resp,
+                self._ln_std,
+                model.as_column(self._scenario.mag),
+                model.as_column(self._scenario.dist_jb),
+            )
+        if self._nshmp or self._epistemic:
+            self._ln_resp, self._ln_std = usgs.broadcast(self._ln_resp, self._ln_std)
 
     def _calc_ln_resp_ref(self, c=None) -> np.ndarray:
         """Calculate the natural logarithm of the reference response.
@@ -177,14 +279,15 @@ class ChiouYoungs2014(model.GroundMotionModel):
             * dist_rup
         )
 
-        # Directivity term
-        ln_resp = ln_resp + (
-            c.c_8
-            * np.maximum(1 - np.maximum(dist_rup - 40, 0) / 30, 0)
-            * np.minimum(np.maximum(mag - 5.5, 0) / 0.8, 1)
-            * np.exp(-c.c_8a * (mag - c.c_8b) ** 2)
-            * model.as_column(s.dpp_centered)
-        )
+        # Directivity term, which is not in nshmp-lib
+        if not self._nshmp:
+            ln_resp = ln_resp + (
+                c.c_8
+                * np.maximum(1 - np.maximum(dist_rup - 40, 0) / 30, 0)
+                * np.minimum(np.maximum(mag - 5.5, 0) / 0.8, 1)
+                * np.exp(-c.c_8a * (mag - c.c_8b) ** 2)
+                * model.as_column(s.dpp_centered)
+            )
 
         # Hanging wall term, which is only applied to sites on the hanging wall
         on_hanging_wall = model.as_column(model.equals(s.on_hanging_wall, True))
@@ -229,14 +332,47 @@ class ChiouYoungs2014(model.GroundMotionModel):
             c = self._coeff_rows(self.COEFF)
         s = self._scenario
 
-        site_term = self._calc_site_term(
-            c,
-            np.exp(ln_resp_ref),
-            model.as_column(s.v_s30),
-            model.as_column(s.depth_1_0),
-            s.region if np.ndim(s.region) == 0 else model.as_column(s.region),
-        )
+        v_s30 = model.as_column(s.v_s30)
+        depth_1_0 = model.as_column(s.depth_1_0)
+        region = s.region if np.ndim(s.region) == 0 else model.as_column(s.region)
+        if not (self._nshmp or self._basin or self._cybershake):
+            site_term = self._calc_site_term(
+                c, np.exp(ln_resp_ref), v_s30, depth_1_0, region
+            )
+        else:
+            site_term = self._calc_site_term(
+                c, np.exp(ln_resp_ref), v_s30, None, region
+            ) + self._calc_basin_term(c, v_s30, depth_1_0, region)
         return ln_resp_ref + site_term
+
+    def _calc_basin_term(self, c, v_s30, depth_1_0, region) -> np.ndarray:
+        """Basin (sediment thickness) term with the nshmp-lib options."""
+        periods = c.period
+        _, phi_5, phi_6 = self._region_coeffs(c, region)
+        cybershake = self._cybershake_rows(periods)
+        if np.any(cybershake):
+            # CyberShake basin coefficients
+            c_cy = self._coeff_rows(self.COEFF_CYBERSHAKE)
+            phi_5 = np.where(cybershake, c_cy.phi_5, phi_5)
+            phi_6 = np.where(cybershake, c_cy.phi_6, phi_6)
+        if self._nshmp:
+            # Reference Z_1.0 (m) with 571 m/sec, and no basin term for NaN
+            # depths
+            v_s30_pow4 = v_s30 * v_s30 * v_s30 * v_s30
+            v_ref_pow4 = self.V_REF_Z1_NSHMP**4
+            depth_ref = np.exp(
+                -7.15 / 4 * np.log((v_s30_pow4 + v_ref_pow4) / (1360.0**4 + v_ref_pow4))
+            )
+            diff_depth_1_0 = np.where(
+                np.isnan(depth_1_0), 0.0, depth_1_0 * 1000.0 - depth_ref
+            )
+        else:
+            diff_depth_1_0 = 1000 * (depth_1_0 - self.calc_depth_1_0(v_s30, region))
+        term = phi_5 * (1.0 - np.exp(-diff_depth_1_0 / phi_6))
+        term = np.where(cybershake, term + usgs.CYBERSHAKE_CONSTANT, term)
+        if self._basin:
+            term = term * usgs.basin_scale(periods, depth_1_0, *usgs.BASIN_Z1P0)
+        return term
 
     @classmethod
     def calc_site_term(
@@ -255,7 +391,7 @@ class ChiouYoungs2014(model.GroundMotionModel):
             velocity (e.g., 1180 m/s) for the reference response.
         depth_1_0 : float or array_like
             depth to the 1.0 km∕s shear-wave velocity horizon beneath the site,
-            :math:`Z_{1.0}` in (km).
+            :math:`Z_{1.0}` in (km). If *None*, then no basin term is applied.
         region : str or array_like, optional
             region of basin model. Valid options: 'california', 'japan'. If
             *None*, then 'california' is used as the default value.
@@ -276,19 +412,7 @@ class ChiouYoungs2014(model.GroundMotionModel):
     @classmethod
     def _calc_site_term(cls, c, resp_ref, v_s30, depth_1_0, region) -> ArrayLike:
         """Calculate the site term for the periods in the coefficients `c`."""
-        if np.ndim(region) > 0:
-            is_japan = model.equals(region, "japan")
-            phi_1 = np.where(is_japan, c.phi_1jp, c.phi_1)
-            phi_5 = np.where(is_japan, c.phi_5jp, c.phi_5)
-            phi_6 = np.where(is_japan, c.phi_6jp, c.phi_6)
-        elif region in ["japan"]:
-            phi_1 = c.phi_1jp
-            phi_5 = c.phi_5jp
-            phi_6 = c.phi_6jp
-        else:
-            phi_1 = c.phi_1
-            phi_5 = c.phi_5
-            phi_6 = c.phi_6
+        phi_1, phi_5, phi_6 = cls._region_coeffs(c, region)
 
         ln_resp_ref = np.log(resp_ref)
 
@@ -303,11 +427,27 @@ class ChiouYoungs2014(model.GroundMotionModel):
             )
             * np.log((np.exp(ln_resp_ref) + c.phi_4) / c.phi_4)
         )
+        if depth_1_0 is None:
+            return site_term
         # Basin model
         diff_depth_1_0 = 1000 * (depth_1_0 - cls.calc_depth_1_0(v_s30, region))
         site_term = site_term + phi_5 * (1 - np.exp(-diff_depth_1_0 / phi_6))
 
         return site_term
+
+    @staticmethod
+    def _region_coeffs(c, region) -> tuple:
+        """Coefficients phi_1, phi_5, and phi_6 of the basin region."""
+        if np.ndim(region) > 0:
+            is_japan = model.equals(region, "japan")
+            return (
+                np.where(is_japan, c.phi_1jp, c.phi_1),
+                np.where(is_japan, c.phi_5jp, c.phi_5),
+                np.where(is_japan, c.phi_6jp, c.phi_6),
+            )
+        if region in ["japan"]:
+            return c.phi_1jp, c.phi_5jp, c.phi_6jp
+        return c.phi_1, c.phi_5, c.phi_6
 
     def _calc_ln_std(
         self, resp_ref: np.ndarray, c=None
@@ -365,8 +505,17 @@ class ChiouYoungs2014(model.GroundMotionModel):
 
     def _check_inputs(self) -> None:
         """Check the inputs."""
-        super()._check_inputs()
         s = self._scenario
+        if self._nshmp:
+            # nshmp-lib defaults
+            if s["on_hanging_wall"] is None and s["dist_x"] is not None:
+                s["on_hanging_wall"] = (np.asarray(s["dist_x"]) >= 0)[()]
+            if s["vs_source"] is None:
+                s["vs_source"] = "inferred"
+            if s["depth_1_0"] is None:
+                # No basin term
+                s["depth_1_0"] = np.nan
+        super()._check_inputs()
 
         if np.ndim(s.mechanism) > 0 or np.ndim(s.mag) > 0:
             self._check_mag_by_mechanism()

@@ -1,13 +1,16 @@
-"""Test the nshmp-lib versions of the NGA-West2 models.
+"""Test the nshmp-lib options of the NGA-West2 models.
 
-The models are compared with the nshmp-lib reference results (``NgaWest2``,
-``DeepBasin``, ``TotalTreeActiveCrust``, and ``UsgsPrviActiveCrust`` tests) and
-with a deliberately literal, scalar transcription of the nshmp-lib (Java)
-classes for scenarios and variants that the reference results do not cover.
+The nshmp-lib variants (``GMM_IDS``) of the NGA-West2 models are compared with
+the nshmp-lib reference results (``NgaWest2``, ``DeepBasin``,
+``TotalTreeActiveCrust``, and ``UsgsPrviActiveCrust`` tests) and with a
+deliberately literal, scalar transcription of the nshmp-lib (Java) classes for
+scenarios and variants that the reference results do not cover. BSSA14 uses
+the published coefficients, which differ from the rounded nshmp-lib
+coefficients, so the BSSA14 results are compared with the reference results
+with bounds on the differences.
 """
 
-import csv
-import functools
+import inspect
 import itertools
 import math
 import os
@@ -19,61 +22,94 @@ import pandas as pd
 import pytest
 
 import pygmm
-from pygmm.ground_motion import nga_west2_nshmp as ngaw2
-from pygmm.ground_motion.nga_west2_nshmp import (
-    AbrahamsonSilvaKamai2014Nshmp as ASK,
-)
-from pygmm.ground_motion.nga_west2_nshmp import (
-    BooreStewartSeyhanAtkinson2014Nshmp as BSSA,
-)
-from pygmm.ground_motion.nga_west2_nshmp import (
-    CampbellBozorgnia2014Nshmp as CB,
-)
-from pygmm.ground_motion.nga_west2_nshmp import (
-    ChiouYoungs2014Nshmp as CY,
-)
+from pygmm.ground_motion import nshmp as usgs
 from pygmm.model import Scenario
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-COEFF_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "pygmm", "data")
 
 pytestmark = pytest.mark.filterwarnings("ignore:.*recommended limit:UserWarning")
 
+ASK = pygmm.AbrahamsonSilvaKamai2014
+BSSA = pygmm.BooreStewartSeyhanAtkinson2014
+CB = pygmm.CampbellBozorgnia2014
+CY = pygmm.ChiouYoungs2014
 MODELS = {"ASK": ASK, "BSSA": BSSA, "CB": CB, "CY": CY}
 
+#: Periods of nshmp-lib (PGV, PGA, and the 21 NGA-West2 periods)
+NSHMP_PERIODS = np.r_[-1.0, 0.0, ASK.PERIODS_NGAWEST2_21]
+
+
+def split_gmm_id(cls, gmm):
+    """Model options and scenario values of an nshmp-lib Gmm id."""
+    params = set(inspect.signature(cls.__init__).parameters)
+    values = cls.GMM_IDS[gmm]
+    options = {k: v for k, v in values.items() if k in params}
+    scenario = {k: v for k, v in values.items() if k not in params}
+    return options, scenario
+
+
+def make(cls, scenario, gmm, **kwds):
+    """Model of an nshmp-lib Gmm id, e.g. "ASK_14_BASIN"."""
+    options, values = split_gmm_id(cls, gmm)
+    if not isinstance(scenario, Scenario):
+        scenario = Scenario(**scenario)
+    if values:
+        scenario = scenario.copy_with(**values)
+    return cls(scenario, **options, **kwds)
+
+
+def variant(cls, scenario, suffix="", **kwds):
+    """Model of the nshmp-lib variant with a suffix, e.g. "_BASIN"."""
+    name = {ASK: "ASK", BSSA: "BSSA", CB: "CB", CY: "CY"}[cls]
+    return make(cls, scenario, f"{name}_14{suffix}", **kwds)
+
+
+def period_columns(cls, periods):
+    """Columns of the periods (0 for PGA and -1 for PGV) in the model results."""
+    return np.array(
+        [
+            np.flatnonzero(np.isclose(cls.PERIODS, p, rtol=1e-9, atol=0))[0]
+            for p in periods
+        ]
+    )
+
+
 # Active crust logic trees of the 2023 CONUS NSHM (nshmp-lib GmmTotalTree) as
-# (model, options, weight)
+# (model, Gmm id suffix, weight)
 TOTAL_TREES = {
     "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023": [
-        (cls, dict(basin=True), 0.25) for cls in MODELS.values()
+        (cls, "_BASIN", 0.25) for cls in MODELS.values()
     ],
     "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_LOS_ANGELES": [
-        (cls, options, weight)
-        for options, weight in [
-            (dict(), 0.125),
-            (dict(basin=True), 0.0625),
-            (dict(basin=True, cybershake=True), 0.0625),
-        ]
+        (cls, suffix, weight)
+        for suffix, weight in [("", 0.125), ("_BASIN", 0.0625), ("_CYBERSHAKE", 0.0625)]
         for cls in MODELS.values()
     ],
     "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_SAN_FRANCISCO": [
-        (cls, options, 0.125)
-        for options in [dict(), dict(basin=True)]
-        for cls in MODELS.values()
+        (cls, suffix, 0.125) for suffix in ["", "_BASIN"] for cls in MODELS.values()
     ],
 }
 
 
-def combine_tree(scenario, components):
-    """Collapsed median and standard deviation of a logic tree.
+def combine_tree(scenario, components, periods):
+    """Collapsed median and standard deviation of a logic tree at periods.
 
     As nshmp-lib ``GroundMotions.combine``: ln(sum(w * exp(mu))) and
-    sqrt(sum(w * sigma**2)).
+    sqrt(sum(w * sigma**2)). `periods` has one period per scenario. Also
+    returns the fraction of the collapsed median from BSSA14.
     """
-    models = [(cls(scenario, **options), w) for cls, options, w in components]
-    resp = sum(w * np.exp(m._ln_resp) for m, w in models)
-    var = sum(w * m._ln_std**2 for m, w in models)
-    return np.log(resp), np.sqrt(var)
+    rows = np.arange(len(periods))
+    resp = 0.0
+    resp_bssa = 0.0
+    var = 0.0
+    for cls, suffix, w in components:
+        m = variant(cls, scenario, suffix)
+        cols = period_columns(cls, periods)
+        resp = resp + w * np.exp(m._ln_resp[rows, cols])
+        if cls is BSSA:
+            resp_bssa = resp_bssa + w * np.exp(m._ln_resp[rows, cols])
+        var = var + w * m._ln_std[rows, cols] ** 2
+    return np.log(resp), np.sqrt(var), resp_bssa / resp
 
 
 # Atol of the nshmp-lib results, which are written with 10 decimals
@@ -96,18 +132,35 @@ def reference_scenario(df):
         width=df["width"].values,
         depth_tor=df["depth_tor"].values,
         depth_hyp=df["depth_hyp"].values,
-        mechanism=ngaw2.mechanism_from_rake(df["rake"].values),
+        mechanism=usgs.mechanism_from_rake(df["rake"].values),
         v_s30=df["v_s30"].values,
         depth_1_0=df["depth_1_0"].values,
         depth_2_5=df["depth_2_5"].values,
     )
 
 
-def period_columns(cls, periods):
-    return np.array([np.flatnonzero(cls.PERIODS == p)[0] for p in periods])
-
-
 REFERENCE_GMMS = sorted(g for g in set(NSHMP["gmm"]) if not g.startswith("PRVI"))
+
+# Bounds of the differences of the natural log of the BSSA14 medians from the
+# nshmp-lib results, which are due to the coefficients: nshmp-lib has a
+# different f_4 at 0.05, 0.075, 0.5, and 1.5 s (e.g., -0.0679 instead of
+# -0.062 at 1.5 s, which changes the nonlinear site term by about 10%), and
+# coefficients rounded to four digits at the other periods (e.g., c of -0.6037
+# instead of -0.60372 at 0.01 s, which changes the linear site term by about
+# 3e-5 per unit of ln(V_s30 / 760)). The PGA and PGV coefficients are the same.
+BSSA_F4_PERIODS = [0.05, 0.075, 0.5, 1.5]
+BSSA_ATOL_F4 = 0.05
+BSSA_ATOL = 1e-3
+
+
+def bssa_bounds(periods):
+    """Bounds of the BSSA14 differences of the natural log of the median."""
+    periods = np.asarray(periods)
+    return np.select(
+        [periods <= 0, np.isin(periods, BSSA_F4_PERIODS)],
+        [0.0, BSSA_ATOL_F4],
+        BSSA_ATOL,
+    )
 
 
 def test_reference_results_coverage():
@@ -129,24 +182,50 @@ def test_reference_results_coverage():
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
-@pytest.mark.parametrize("gmm", REFERENCE_GMMS)
+@pytest.mark.parametrize("gmm", [g for g in REFERENCE_GMMS if not g.startswith("BSSA")])
 def test_nshmp_reference_results(gmm):
     df = NSHMP[NSHMP["gmm"] == gmm]
     s = reference_scenario(df)
+    periods = df["period"].values
+    median = df["median"].values
     if gmm in TOTAL_TREES:
-        cls = ASK
-        assert all(np.array_equal(c.PERIODS, cls.PERIODS) for c in MODELS.values())
-        ln_resp, ln_std = combine_tree(s, TOTAL_TREES[gmm])
+        ln_resp, ln_std, share = combine_tree(s, TOTAL_TREES[gmm], periods)
+        # BSSA14 uses the published coefficients, so the collapsed median
+        # differs by its fraction of the median times the BSSA14 differences
+        diff = ln_resp - np.log(median)
+        tol = ATOL / median + 1e-10
+        assert np.all(np.abs(diff) <= 1.03 * share * bssa_bounds(periods) + tol)
+        assert np.all(np.abs(diff[periods <= 0]) <= tol[periods <= 0])
+        assert np.max(np.abs(diff)) > 1e-4
     else:
         cls = MODELS[gmm.split("_")[0]]
-        m = cls(s, **cls.GMM_IDS[gmm])
-        ln_resp, ln_std = m._ln_resp, m._ln_std
+        m = make(cls, s, gmm)
+        rows = np.arange(len(df))
+        cols = period_columns(cls, periods)
+        ln_resp, ln_std = m._ln_resp[rows, cols], m._ln_std[rows, cols]
+        np.testing.assert_allclose(np.exp(ln_resp), median, rtol=0, atol=ATOL)
+    # BSSA14 has the same standard deviations as nshmp-lib
+    np.testing.assert_allclose(ln_std, df["sigma"], rtol=0, atol=ATOL)
+
+
+@pytest.mark.filterwarnings("ignore::UserWarning")
+@pytest.mark.parametrize("gmm", [g for g in REFERENCE_GMMS if g.startswith("BSSA")])
+def test_bssa_nshmp_reference_results(gmm):
+    """BSSA14 with the published coefficients and the nshmp-lib results."""
+    df = NSHMP[NSHMP["gmm"] == gmm]
+    m = make(BSSA, reference_scenario(df), gmm)
+    periods = df["period"].values
     rows = np.arange(len(df))
-    cols = period_columns(cls, df["period"].values)
-    median = np.exp(ln_resp[rows, cols])
-    sigma = ln_std[rows, cols]
-    np.testing.assert_allclose(median, df["median"], rtol=0, atol=ATOL)
-    np.testing.assert_allclose(sigma, df["sigma"], rtol=0, atol=ATOL)
+    cols = period_columns(BSSA, periods)
+    ln_resp, ln_std = m._ln_resp[rows, cols], m._ln_std[rows, cols]
+    diff = ln_resp - np.log(df["median"].values)
+    # Rounding of the medians to 10 decimals
+    tol = ATOL / df["median"].values + 1e-10
+    assert np.all(np.abs(diff) <= bssa_bounds(periods) + tol)
+    # The coefficients of PGA and PGV are the same
+    assert np.all(np.abs(diff[periods <= 0]) <= tol[periods <= 0])
+    assert np.max(np.abs(diff)) > 1e-4
+    np.testing.assert_allclose(ln_std, df["sigma"], rtol=0, atol=ATOL)
 
 
 def test_reference_variants_differ():
@@ -173,7 +252,9 @@ def test_prvi_reference_results():
     ``CB_14_BASE``, and ``CY_14_BASE`` (``PRVI_2025_ACTIVE_CRUST``) and of the
     ``_PRVI`` variants (``PRVI_2025_ACTIVE_CRUST_ADJUSTED``). Both have the
     same epistemic branches and standard deviations, so the ratio of their
-    medians is the difference of the backbone medians.
+    medians is the difference of the backbone medians. BSSA14 uses the
+    published coefficients, which change the difference of its PRVI and base
+    medians by up to a fraction of the bounds of the BSSA14 differences.
     """
     base = NSHMP[NSHMP["gmm"] == "PRVI_2025_ACTIVE_CRUST"].reset_index(drop=True)
     adj = NSHMP[NSHMP["gmm"] == "PRVI_2025_ACTIVE_CRUST_ADJUSTED"].reset_index(
@@ -182,18 +263,20 @@ def test_prvi_reference_results():
     np.testing.assert_array_equal(base[["index", "period"]], adj[["index", "period"]])
     np.testing.assert_array_equal(base["sigma"], adj["sigma"])
     s = reference_scenario(base)
+    periods = base["period"].values
     rows = np.arange(len(base))
     diff = 0.0
     for name in ["ASK", "BSSA", "CB", "CY"]:
         cls = MODELS[name]
-        cols = period_columns(cls, base["period"].values)
-        ln_prvi = cls(s, **cls.GMM_IDS[name + "_14_PRVI"])._ln_resp
-        ln_base = cls(s, **cls.GMM_IDS[name + "_14_BASE"])._ln_resp
+        cols = period_columns(cls, periods)
+        ln_prvi = make(cls, s, name + "_14_PRVI")._ln_resp
+        ln_base = make(cls, s, name + "_14_BASE")._ln_resp
         diff = diff + 0.25 * (ln_prvi[rows, cols] - ln_base[rows, cols])
     observed = np.log(adj["median"].values) - np.log(base["median"].values)
     # Rounding of the medians to 10 decimals
     tol = ATOL / adj["median"].values + ATOL / base["median"].values
-    assert np.all(np.abs(observed - diff) <= tol)
+    assert np.all(np.abs(observed - diff) <= tol + 0.25 * bssa_bounds(periods))
+    assert np.all(np.abs(observed - diff)[periods <= 0] <= tol[periods <= 0])
     assert np.max(np.abs(diff)) > 0.5
 
 
@@ -201,23 +284,54 @@ def test_prvi_reference_results():
 ####################################
 
 
-@functools.cache
-def load_java_coeffs(name):
-    """Coefficients by period, read with the Java column names."""
-    with open(os.path.join(COEFF_DIR, name)) as fp:
-        lines = [line for line in fp if not line.startswith("#")]
-    coeffs = {}
-    for row in csv.DictReader(lines):
-        coeffs[float(row.pop("period"))] = {k: float(v) for k, v in row.items()}
-    return coeffs
+def java_name(name):
+    """Coefficient name without underscores or case (``v_lin`` is ``Vlin``)."""
+    return name.replace("_", "").lower()
+
+
+class JavaCoeffs(dict):
+    """Coefficients of a period, accessed with the Java (nshmp-lib) names."""
+
+    ALIASES = {"rho": "rholnpgalny"}
+
+    def __getitem__(self, key):
+        key = java_name(key)
+        return super().__getitem__(self.ALIASES.get(key, key))
+
+
+# nshmp-lib names of the CyberShake coefficients
+CYBERSHAKE_NAMES = {
+    "abrahamson_silva_kamai_2014": dict(a44="a44cy", a45="a45cy"),
+    "boore_stewart_seyhan_atkinson_2014": dict(f_6="f6cy", f_7="f7cy", dz1_max="dz1cy"),
+    "campbell_bozorgnia_2014": dict(slope="slope_cy"),
+    "chiou_youngs_2014": dict(phi_5="phi5cy", phi_6="phi6cy"),
+}
+MODULES = {
+    "abrahamson_silva_kamai_2014": ASK,
+    "boore_stewart_seyhan_atkinson_2014": BSSA,
+    "campbell_bozorgnia_2014": CB,
+    "chiou_youngs_2014": CY,
+}
 
 
 def java_coeffs(name, imt, prvi, prvi_names):
-    c = dict(load_java_coeffs(name + "-nshmp.csv")[imt])
+    """Coefficients of the model (the published coefficients for BSSA14).
+
+    The nshmp-lib coefficients of ASK14, CB14, and CY14 are the same as the
+    published coefficients, except for the CY14 c_8 (of the directivity
+    term, which nshmp-lib does not have).
+    """
+    cls = MODULES[name]
+    (j,) = np.flatnonzero(np.isclose(cls.PERIODS, imt, rtol=1e-9, atol=0))
+    c = JavaCoeffs(
+        {java_name(k): float(cls.COEFF[k][j]) for k in cls.COEFF.dtype.names}
+    )
+    for key, java in CYBERSHAKE_NAMES[name].items():
+        c[java_name(java)] = float(cls.COEFF_CYBERSHAKE[key][j])
     if prvi:
-        p = load_java_coeffs(name + "-nshmp-prvi.csv")[imt]
+        names = {java_name(k): k for k in cls.COEFF_PRVI.dtype.names}
         for key in prvi_names:
-            c[key] = p[key]
+            c[java_name(key)] = float(cls.COEFF_PRVI[names[java_name(key)]][j])
     return c
 
 
@@ -746,13 +860,15 @@ def java_cy(imt, inp, usgs_basin, vs_inferred, cybershake, prvi):
     return mu, sigma
 
 
-def java_calc(name, imt, inp, options):
-    """nshmp-lib ground motion (mean, sigma) of a model and options."""
-    epistemic = options.get("epistemic", True)
+def java_calc(name, imt, inp, gmm):
+    """nshmp-lib ground motion (mean, sigma) of a model and Gmm id."""
+    options, values = split_gmm_id(MODELS[name], gmm)
+    assert options["nshmp"]
+    epistemic = options.get("epistemic", False)
     basin = options.get("basin", False)
     cybershake = options.get("cybershake", False) and cybershake_imt(imt)
     prvi = options.get("prvi", False)
-    vs_inferred = not options.get("vs30_measured", False)
+    vs_inferred = values.get("vs_source", "inferred") == "inferred"
     if name == "ASK":
         mu, sigma = java_ask(imt, inp, basin, vs_inferred, cybershake, prvi)
     elif name == "BSSA":
@@ -851,35 +967,32 @@ def grid():
     return rows, grid_scenario(rows)
 
 
-VARIANTS = [
-    (name, gmm, options)
-    for name, cls in MODELS.items()
-    for gmm, options in cls.GMM_IDS.items()
-]
+VARIANTS = [(name, gmm) for name, cls in MODELS.items() for gmm in cls.GMM_IDS]
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
-@pytest.mark.parametrize("name,gmm,options", VARIANTS, ids=[v[1] for v in VARIANTS])
-def test_matches_nshmp_transcription(grid, name, gmm, options):
+@pytest.mark.parametrize("name,gmm", VARIANTS, ids=[v[1] for v in VARIANTS])
+def test_matches_nshmp_transcription(grid, name, gmm):
     rows, scenario = grid
     cls = MODELS[name]
-    m = cls(scenario, **options)
-    # Every 3rd row (with all of the IMTs) keeps the test fast
+    m = make(cls, scenario, gmm)
+    # Every 3rd row (with the nshmp-lib IMTs) keeps the test fast
     index = np.arange(0, len(rows), 3)
+    cols = period_columns(cls, NSHMP_PERIODS)
     expected = np.array(
         [
             [
-                java_calc(name, imt, dict(zip(JAVA_NAMES, rows[i])), options)
-                for imt in cls.PERIODS
+                java_calc(name, imt, dict(zip(JAVA_NAMES, rows[i])), gmm)
+                for imt in NSHMP_PERIODS
             ]
             for i in index
         ]
     )
     np.testing.assert_allclose(
-        m._ln_resp[index], expected[..., 0], rtol=1e-12, atol=1e-12
+        m._ln_resp[index][:, cols], expected[..., 0], rtol=1e-12, atol=1e-12
     )
     np.testing.assert_allclose(
-        m._ln_std[index], expected[..., 1], rtol=1e-12, atol=1e-12
+        m._ln_std[index][:, cols], expected[..., 1], rtol=1e-12, atol=1e-12
     )
 
 
@@ -890,10 +1003,11 @@ def test_grid_exercises_branches(grid):
         # Variants differ on the grid
         for name in ["ASK", "BSSA", "CB", "CY"]:
             cls = MODELS[name]
+            cols = period_columns(cls, NSHMP_PERIODS)
             results = {
-                gmm: np.concatenate([m._ln_resp, m._ln_std])
-                for gmm, options in cls.GMM_IDS.items()
-                for m in [cls(scenario, **options)]
+                gmm: np.concatenate([m._ln_resp[:, cols], m._ln_std[:, cols]])
+                for gmm in cls.GMM_IDS
+                for m in [make(cls, scenario, gmm)]
             }
             values = list(results.values())
             for a, b in itertools.combinations(range(len(values)), 2):
@@ -907,65 +1021,42 @@ def test_grid_exercises_branches(grid):
 
 
 def test_coefficient_files():
-    for cls in MODELS.values():
-        c = cls.COEFF
-        np.testing.assert_array_equal(c["period"], cls.PERIODS)
-        np.testing.assert_allclose(
-            cls.PERIODS[cls.INDICES_PSA], cls.PERIODS_NGAWEST2_21, rtol=0
-        )
-        assert cls.PERIODS[cls.INDEX_PGA] == 0
-        assert cls.PERIODS[cls.INDEX_PGV] == -1
-        np.testing.assert_array_equal(cls.COEFF_PRVI["period"], cls.PERIODS)
-    # The PRVI coefficients only replace some columns
-    for cls, names in [
-        (ASK, {"a1", "a10"}),
-        (BSSA, {"e0", "e1", "e2", "e3", "c"}),
-        (CB, {"c0", "c11"}),
-        (CY, {"c1", "phi1"}),
+    # The nshmp-lib PRVI and CyberShake coefficients are given at the nshmp-lib
+    # periods, and are NaN at the other periods of the models
+    for cls, prvi_names, cybershake_names in [
+        (ASK, {"a1", "a10"}, {"a44", "a45"}),
+        (BSSA, {"e_0", "e_1", "e_2", "e_3", "c"}, {"f_6", "f_7", "dz1_max"}),
+        (CB, {"c_0", "c_11"}, {"slope"}),
+        (CY, {"c_1", "phi_1"}, {"phi_5", "phi_6"}),
     ]:
-        differ = {
-            name
-            for name in cls.COEFF.dtype.names
-            if not np.array_equal(cls.COEFF[name], cls.COEFF_PRVI[name])
-        }
-        assert differ == names
-
-
-def test_published_coefficients():
-    # The nshmp-lib coefficients are the same as the published models', except
-    # for the BSSA14 coefficients (see test_published_models)
-    for pub, nshmp, names in [
-        (
-            pygmm.AbrahamsonSilvaKamai2014,
-            ASK,
-            dict(a1="a1", a10="a10", a13="a13", a43="a43", a46="a46", s1e="s1e"),
-        ),
-        (
-            pygmm.CampbellBozorgnia2014,
-            CB,
-            dict(c_0="c0", c_11="c11", c_16="c16", k_1="k1", phi_1="phi1"),
-        ),
-        (
-            pygmm.ChiouYoungs2014,
-            CY,
-            dict(c_1="c1", phi_5="phi5", c_9b="c9b", sigma_3="sigma3"),
-        ),
-    ]:
-        for i, period in enumerate(nshmp.PERIODS):
-            (j,) = np.flatnonzero(np.isclose(pub.COEFF["period"], period))
-            for pub_name, name in names.items():
-                assert pub.COEFF[pub_name][j] == nshmp.COEFF[name][i]
+        nshmp = np.zeros(len(cls.PERIODS), dtype=bool)
+        nshmp[period_columns(cls, NSHMP_PERIODS)] = True
+        for coeff, names, rows in [
+            (cls.COEFF_PRVI, prvi_names, nshmp),
+            (cls.COEFF_CYBERSHAKE, cybershake_names, nshmp & (cls.PERIODS > 1.9)),
+        ]:
+            np.testing.assert_array_equal(coeff["period"], cls.PERIODS)
+            assert set(coeff.dtype.names) == names | {"period"}
+            # The PRVI coefficients replace the model coefficients
+            if coeff is cls.COEFF_PRVI:
+                assert names <= set(cls.COEFF.dtype.names)
+            for name in names:
+                assert np.all(np.isfinite(coeff[name][rows]))
+                assert np.all(np.isnan(coeff[name][~rows]))
+        # The PRVI coefficients differ from the published coefficients
+        for name in prvi_names:
+            assert np.all(cls.COEFF_PRVI[name][nshmp] != cls.COEFF[name][nshmp])
 
 
 def test_epistemic_epsilon():
-    eps = ngaw2.epistemic_epsilon(
+    eps = usgs.epistemic_epsilon(
         [5.9, 6.0, 6.99, 7.0, 5.0, 6.5, 7.5, 5.0, 6.5, 7.5],
         [9.9, 9.9, 9.9, 9.9, 10.0, 29.9, 10.0, 30.0, 30.0, 300.0],
     )
     np.testing.assert_array_equal(
         eps, [0.37, 0.25, 0.25, 0.40, 0.22, 0.23, 0.36, 0.22, 0.23, 0.33]
     )
-    factor = ngaw2.epistemic_ln_factor(6.5, 20.0)
+    factor = usgs.epistemic_ln_factor(6.5, 20.0)
     expected = math.log(0.185 * math.exp(-0.23) + 0.63 + 0.185 * math.exp(0.23))
     assert math.isclose(factor, expected, rel_tol=1e-15)
 
@@ -974,13 +1065,13 @@ def test_mechanism_from_rake():
     rake = [np.nan, -180, -135, -134, -90, -46, -45, -44, 0, 44, 45, 90, 135, 136, 180]
     expected = ["U", "SS", "NS", "NS", "NS", "NS", "NS", "SS", "SS"]
     expected += ["SS", "RS", "RS", "RS", "SS", "SS"]
-    assert ngaw2.mechanism_from_rake(rake).tolist() == expected
-    assert ngaw2.mechanism_from_rake(90.0) == "RS"
+    assert usgs.mechanism_from_rake(rake).tolist() == expected
+    assert usgs.mechanism_from_rake(90.0) == "RS"
 
 
 def test_basin_scale():
     periods = np.array([-1, 0, 0.5, 0.75, 1.0, 3.0])
-    scale = ngaw2.basin_scale(
+    scale = usgs.basin_scale(
         periods, np.array([[np.nan], [0.3], [0.4], [0.6]]), 0.3, 0.5
     )
     np.testing.assert_allclose(
@@ -1018,9 +1109,9 @@ def scenario(**kwds):
 @pytest.mark.parametrize("cls", [ASK, BSSA, CB, CY])
 def test_basin_variant_removes_short_period_basin_term(cls):
     # Z_2.5 from 1 to 3 km has no CB14 basin term
-    basin = cls(scenario(depth_2_5=5.0), basin=True)
+    basin = variant(cls, scenario(depth_2_5=5.0), "_BASIN")
     # No basin depth
-    none = cls(scenario(depth_1_0=None, depth_2_5=None), basin=True)
+    none = variant(cls, scenario(depth_1_0=None, depth_2_5=None), "_BASIN")
     short = basin.periods <= 0.5
     np.testing.assert_array_equal(basin.spec_accels[short], none.spec_accels[short])
     assert basin.pga == none.pga
@@ -1032,45 +1123,66 @@ def test_basin_variant_removes_short_period_basin_term(cls):
 
 @pytest.mark.parametrize("cls", [ASK, BSSA, CY])
 def test_basin_none_is_nan(cls):
-    for options in cls.GMM_IDS.values():
-        none = cls(scenario(depth_1_0=None), **options)
-        nan = cls(scenario(depth_1_0=np.nan), **options)
+    for gmm in cls.GMM_IDS:
+        none = make(cls, scenario(depth_1_0=None), gmm)
+        nan = make(cls, scenario(depth_1_0=np.nan), gmm)
         np.testing.assert_array_equal(none.spec_accels, nan.spec_accels)
         np.testing.assert_array_equal(none.ln_stds, nan.ln_stds)
 
 
 def test_cb_basin_none_is_nan():
-    for options in CB.GMM_IDS.values():
-        none = CB(scenario(depth_2_5=None), **options)
-        nan = CB(scenario(depth_2_5=np.nan), **options)
+    for gmm in CB.GMM_IDS:
+        none = make(CB, scenario(depth_2_5=None), gmm)
+        nan = make(CB, scenario(depth_2_5=np.nan), gmm)
         np.testing.assert_array_equal(none.spec_accels, nan.spec_accels)
 
 
 @pytest.mark.parametrize("cls", [ASK, BSSA, CB, CY])
 def test_cybershake_long_periods_only(cls):
-    basin = cls(scenario(), basin=True)
-    cy = cls(scenario(), basin=True, cybershake=True)
+    ims = ["pga", "pgv", "psa_ngawest2_21"]
+    basin = variant(cls, scenario(), "_BASIN", ims=ims)
+    cy = variant(cls, scenario(), "_CYBERSHAKE", ims=ims)
     long = basin.periods > 1.9
     np.testing.assert_array_equal(cy.spec_accels[~long], basin.spec_accels[~long])
     assert cy.pga == basin.pga
     assert np.all(cy.spec_accels[long] != basin.spec_accels[long])
 
 
+@pytest.mark.parametrize("cls", [ASK, BSSA, CB, CY])
+def test_nan_without_nshmp_coefficients(cls):
+    # The CyberShake and PRVI coefficients are only given at the nshmp-lib
+    # periods
+    nshmp = np.zeros(len(cls.PERIODS), dtype=bool)
+    nshmp[period_columns(cls, NSHMP_PERIODS)] = True
+    for suffix, rows in [
+        ("_PRVI", nshmp),
+        ("_CYBERSHAKE", nshmp | (cls.PERIODS <= 1.9)),
+    ]:
+        m = variant(cls, scenario(), suffix)
+        psa = rows[cls.INDICES_PSA]
+        assert np.all(np.isfinite(m.spec_accels[psa]))
+        assert np.all(np.isnan(m.spec_accels[~psa]))
+        assert np.isfinite(m.pga) and np.isfinite(m.pgv)
+    assert np.all(np.isfinite(variant(cls, scenario(), "_BASIN").spec_accels))
+
+
 @pytest.mark.parametrize("cls", [ASK, CY])
 def test_vs30_measured_only_affects_sigma(cls):
-    inferred = cls(scenario(), epistemic=False)
-    measured = cls(scenario(), epistemic=False, vs30_measured=True)
+    inferred = variant(cls, scenario(), "_BASE")
+    measured = variant(cls, scenario(), "_VS30_MEASURED")
     np.testing.assert_array_equal(measured.spec_accels, inferred.spec_accels)
     assert np.all(measured.ln_stds <= inferred.ln_stds)
     assert np.all(
         measured.ln_stds[measured.periods < 1] < inferred.ln_stds[measured.periods < 1]
     )
+    # nshmp-lib uses the variability of an inferred V_s30
+    np.testing.assert_array_equal(cls(scenario(), nshmp=True).ln_stds, inferred.ln_stds)
 
 
 @pytest.mark.parametrize("cls", list(MODELS.values()))
 def test_epistemic_branches(cls):
-    epi = cls(scenario())
-    center = cls(scenario(), epistemic=False)
+    epi = variant(cls, scenario())
+    center = variant(cls, scenario(), "_BASE")
     assert epi.epistemic and not center.epistemic
     # M 6.8, R_JB of 4 km: epsilon = 0.25
     offset = math.log(0.185 * math.exp(-0.25) + 0.63 + 0.185 * math.exp(0.25))
@@ -1079,7 +1191,7 @@ def test_epistemic_branches(cls):
     )
     np.testing.assert_array_equal(epi.ln_stds, center.ln_stds)
     # The branches used for hazard (nshmp-lib GroundMotions.createNgaTree)
-    for im in ["pga", "psa"] + (["pgv"] if cls.INDEX_PGV is not None else []):
+    for im in ["pga", "psa", "pgv"]:
         branches = epi.ln_branches(im)
         [(w_c, ln_c, std_c)] = center.ln_branches(im)
         assert w_c == 1.0
@@ -1090,6 +1202,13 @@ def test_epistemic_branches(cls):
     w = np.array([b[0] for b in epi.ln_branches()])
     ln = np.array([b[1] for b in epi.ln_branches()])
     np.testing.assert_allclose(np.log(w @ np.exp(ln)), epi.ln_pga, rtol=1e-12)
+    # The epistemic branches can also be used with the published model
+    published = cls(scenario(), epistemic=True)
+    np.testing.assert_allclose(
+        np.log(published.spec_accels) - np.log(cls(scenario()).spec_accels),
+        offset,
+        rtol=1e-12,
+    )
 
 
 def test_width_from_depth_bor_and_depth_hyp():
@@ -1098,15 +1217,26 @@ def test_width_from_depth_bor_and_depth_hyp():
     params.pop("depth_hyp")
     depth_bor = 1.5 + 16.0 * math.sin(math.radians(50.0))
     for cls in [ASK, CB]:
-        expected = cls(scenario(depth_hyp=1.5 + 8.0 * math.sin(math.radians(50.0))))
-        m = cls(Scenario(depth_bor=depth_bor, **params))
+        expected = cls(
+            scenario(depth_hyp=1.5 + 8.0 * math.sin(math.radians(50.0))), nshmp=True
+        )
+        m = cls(Scenario(depth_bor=depth_bor, **params), nshmp=True)
         np.testing.assert_allclose(m.spec_accels, expected.spec_accels, rtol=1e-13)
-        with pytest.raises(ValueError, match="width or depth_bor is required"):
-            cls(Scenario(**params))
+        # Without depth_bor, the width is estimated as in the published model
+        m = cls(Scenario(**params), nshmp=True)
+        published = cls(Scenario(**params))
+        np.testing.assert_allclose(m.scenario.width, published.scenario.width)
+    # The hypocentral depth is the middle of the rupture
+    m = CB(Scenario(**params), nshmp=True)
+    assert math.isclose(
+        m.scenario.depth_hyp,
+        1.5 + m.scenario.width * math.sin(math.radians(50.0)) / 2,
+        rel_tol=1e-15,
+    )
     # The width is only needed by CB14 for the hanging-wall term
-    m = CB(scenario(width=None, dist_x=-5.0))
+    m = CB(scenario(width=None, dist_x=-5.0), nshmp=True)
     np.testing.assert_allclose(
-        m.spec_accels, CB(scenario(dist_x=-5.0)).spec_accels, rtol=1e-14
+        m.spec_accels, CB(scenario(dist_x=-5.0), nshmp=True).spec_accels, rtol=1e-14
     )
 
 
@@ -1114,31 +1244,56 @@ def test_unspecified_mechanism():
     # "U" uses e0 in BSSA14 and is the same as strike-slip in the other models
     for cls in [ASK, CB, CY]:
         np.testing.assert_array_equal(
-            cls(scenario(mechanism="U")).spec_accels,
-            cls(scenario(mechanism="SS")).spec_accels,
+            cls(scenario(mechanism="U"), nshmp=True).spec_accels,
+            cls(scenario(mechanism="SS"), nshmp=True).spec_accels,
         )
+        mechanism = np.array(["U", "SS", "NS"])
+        m = cls(scenario(mechanism=mechanism), nshmp=True)
+        np.testing.assert_array_equal(m.spec_accels[0], m.spec_accels[1])
+        assert np.any(m.spec_accels[2] != m.spec_accels[1])
     assert np.all(
-        BSSA(scenario(mechanism="U")).spec_accels
-        != BSSA(scenario(mechanism="SS")).spec_accels
+        BSSA(scenario(mechanism="U"), nshmp=True).spec_accels
+        != BSSA(scenario(mechanism="SS"), nshmp=True).spec_accels
+    )
+
+
+@pytest.mark.parametrize("cls", [ASK, CY])
+def test_hanging_wall_from_dist_x(cls):
+    hw = cls(scenario(), nshmp=True)
+    np.testing.assert_array_equal(
+        hw.spec_accels, cls(scenario(on_hanging_wall=True), nshmp=True).spec_accels
+    )
+    fw = cls(scenario(on_hanging_wall=False), nshmp=True)
+    assert np.any(hw.spec_accels != fw.spec_accels)
+    # The published models use on_hanging_wall=False if it is not given
+    np.testing.assert_array_equal(
+        cls(scenario()).spec_accels,
+        cls(scenario(on_hanging_wall=False)).spec_accels,
     )
 
 
 def test_options():
     s = scenario()
-    with pytest.raises(ValueError, match="cybershake=True requires basin=True"):
-        ASK(s, cybershake=True)
-    with pytest.raises(TypeError):
-        BSSA(s, vs30_measured=True)
-    m = CY(s, **CY.GMM_IDS["CY_14_CYBERSHAKE"])
-    assert m.basin and m.cybershake and m.epistemic and not m.prvi
-    assert not m.vs30_measured
+    for cls in MODELS.values():
+        with pytest.raises(ValueError, match="cybershake=True requires basin=True"):
+            cls(s, nshmp=True, cybershake=True)
+        with pytest.raises(TypeError):
+            cls(s, vs30_measured=True)
+        m = cls(s)
+        assert not (m.nshmp or m.epistemic or m.basin or m.cybershake or m.prvi)
+    m = variant(CY, s, "_CYBERSHAKE")
+    assert m.nshmp and m.basin and m.cybershake and m.epistemic and not m.prvi
+    assert m.scenario.vs_source == "inferred"
 
 
-def test_missing_values_raise():
+def test_missing_dist_x():
+    # Without dist_x, the hanging-wall term is not applied
     params = dict(SCENARIO)
     params.pop("dist_x")
-    with pytest.raises(ValueError):
-        ASK(Scenario(**params))
+    np.testing.assert_array_equal(
+        ASK(Scenario(**params), nshmp=True).spec_accels,
+        ASK(scenario(dist_x=-1.0), nshmp=True).spec_accels,
+    )
 
 
 def test_gmm_ids():
@@ -1158,8 +1313,15 @@ def test_gmm_ids():
             for s in ["_14", "_14_BASE", "_14_BASIN", "_14_CYBERSHAKE", "_14_PRVI"]
         }
     for cls in MODELS.values():
-        for options in cls.GMM_IDS.values():
-            cls(scenario(), **options)
+        for gmm in cls.GMM_IDS:
+            options, values = split_gmm_id(cls, gmm)
+            assert options["nshmp"]
+            assert options.get("epistemic", False) == (
+                not gmm.endswith(("_BASE", "_VS30_MEASURED", "_PRVI"))
+            )
+            # The scenario values are vs_source of ASK14 and CY14
+            assert set(values) == ({"vs_source"} if cls in [ASK, CY] else set())
+            make(cls, scenario(), gmm)
 
 
 # Comparison with the published models
@@ -1188,7 +1350,7 @@ def test_published_models():
     """
     inp = NSHMP[NSHMP["gmm"] == "ASK_14_BASE"].drop_duplicates("index")
     inp = inp.sort_values("index").reset_index(drop=True)
-    mech = ngaw2.mechanism_from_rake(inp["rake"].values)
+    mech = usgs.mechanism_from_rake(inp["rake"].values)
     v_s30 = inp["v_s30"].values.astype(float)
     z1, z25 = inp["depth_1_0"].values, inp["depth_2_5"].values
     geom = dict(
@@ -1305,16 +1467,15 @@ def test_published_models():
 # Vectorized scenarios
 ######################
 
-KEYS = ["pga", "ln_pga", "ln_std_pga", "spec_accels", "ln_stds"]
+KEYS = ["pga", "ln_pga", "ln_std_pga", "spec_accels", "ln_stds", "pgv", "ln_std_pgv"]
 PERIODS = [0.05, 0.3, 1.0, 2.5]
 
 
-def scalar_results(cls, row, **kwds):
+def scalar_results(cls, row, gmm):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        m = cls(Scenario(**dict(zip(GRID_NAMES, row))), **kwds)
-    keys = KEYS + (["pgv", "ln_std_pgv"] if cls.INDEX_PGV is not None else [])
-    results = {key: getattr(m, key) for key in keys}
+        m = make(cls, dict(zip(GRID_NAMES, row)), gmm)
+    results = {key: getattr(m, key) for key in KEYS}
     results["interp_spec_accels"] = m.interp_spec_accels(PERIODS)
     results["interp_ln_stds"] = m.interp_ln_stds(PERIODS)
     return results
@@ -1336,11 +1497,11 @@ ALL_CLASSES = list(MODELS.values())
 def test_vectorized_matches_scalar(grid, cls):
     rows, _ = grid
     rows = rows[::11]
-    options = dict(basin=True)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        m = cls(grid_scenario(rows), **options)
-    expected = [scalar_results(cls, row, **options) for row in rows]
+        m = variant(cls, grid_scenario(rows), "_BASIN")
+    gmm = next(g for g in cls.GMM_IDS if g.endswith("_14_BASIN"))
+    expected = [scalar_results(cls, row, gmm) for row in rows]
     for key in expected[0]:
         if key.startswith("interp"):
             actual = getattr(m, key)(PERIODS)
@@ -1354,50 +1515,52 @@ def test_vectorized_matches_scalar(grid, cls):
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 def test_vectorized_shapes(grid, cls):
     rows, s = grid
-    m = cls(s)
+    m = variant(cls, s)
     n = len(rows)
+    n_psa = len(cls.INDICES_PSA)
     assert m.pga.shape == (n,)
     assert m.ln_pga.shape == (n,)
     assert m.ln_std_pga.shape == (n,)
-    if cls.INDEX_PGV is not None:
-        assert m.pgv.shape == (n,)
-    assert m.spec_accels.shape == (n, 21)
-    assert m.ln_stds.shape == (n, 21)
+    assert m.pgv.shape == (n,)
+    assert m.spec_accels.shape == (n, n_psa)
+    assert m.ln_stds.shape == (n, n_psa)
     assert m.interp_spec_accels(PERIODS).shape == (n, len(PERIODS))
 
 
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 def test_scalar_shapes(cls):
-    m = cls(scenario())
+    m = variant(cls, scenario())
     assert np.ndim(m.pga) == 0
-    assert m.spec_accels.shape == (21,)
-    assert m.ln_stds.shape == (21,)
+    assert m.spec_accels.shape == (len(cls.INDICES_PSA),)
+    assert m.ln_stds.shape == (len(cls.INDICES_PSA),)
 
 
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 def test_scalars_broadcast_with_arrays(cls):
     mag = np.array([5.5, 6.5, 7.5])
-    m = cls(scenario(mag=mag))
-    assert m.spec_accels.shape == (3, 21)
-    assert m.ln_stds.shape == (3, 21)
+    m = variant(cls, scenario(mag=mag))
+    n_psa = len(cls.INDICES_PSA)
+    assert m.spec_accels.shape == (3, n_psa)
+    assert m.ln_stds.shape == (3, n_psa)
     for i in range(3):
-        expected = cls(scenario(mag=mag[i]))
+        expected = variant(cls, scenario(mag=mag[i]))
         np.testing.assert_array_equal(m.spec_accels[i], expected.spec_accels)
         np.testing.assert_array_equal(m.ln_stds[i], expected.ln_stds)
         assert m.pga[i] == expected.pga
     # Values that only affect the median
-    m = cls(scenario(v_s30=np.array([300.0, 760.0])), ims=["pga"])
+    m = variant(cls, scenario(v_s30=np.array([300.0, 760.0])), ims=["pga"])
     assert m.ln_std_pga.shape == (2,)
 
 
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 def test_multidimensional_inputs(cls):
     mag, dist = np.meshgrid([5.5, 6.5, 7.5], [5.0, 20.0, 60.0, 150.0], indexing="ij")
-    m = cls(scenario(mag=mag, dist_jb=dist, dist_rup=dist + 1.0))
+    m = variant(cls, scenario(mag=mag, dist_jb=dist, dist_rup=dist + 1.0))
+    n_psa = len(cls.INDICES_PSA)
     assert m.pga.shape == (3, 4)
-    assert m.spec_accels.shape == (3, 4, 21)
-    assert m.ln_stds.shape == (3, 4, 21)
-    expected = cls(scenario(mag=7.5, dist_jb=20.0, dist_rup=21.0))
+    assert m.spec_accels.shape == (3, 4, n_psa)
+    assert m.ln_stds.shape == (3, 4, n_psa)
+    expected = variant(cls, scenario(mag=7.5, dist_jb=20.0, dist_rup=21.0))
     assert m.pga[2, 1] == expected.pga
     np.testing.assert_array_equal(m.spec_accels[2, 1], expected.spec_accels)
 
@@ -1427,8 +1590,8 @@ def vector_scenario(n=500, seed=0):
 @pytest.mark.parametrize("ims", [["pga"], "pga", ("pga",)])
 def test_pga_only_matches_default(cls, ims):
     s = vector_scenario()
-    full = cls(s)
-    m = cls(s, ims=ims)
+    full = variant(cls, s)
+    m = variant(cls, s, ims=ims)
     assert m._ln_resp.shape == (500, 1)
     np.testing.assert_array_equal(m.pga, full.pga)
     np.testing.assert_array_equal(m.ln_pga, full.ln_pga)
@@ -1440,10 +1603,11 @@ def test_pga_only_matches_default(cls, ims):
 @pytest.mark.parametrize(
     "ims", [["psa_0p200"], ["pga", "psa_0p100", "psa_1p000", "psa_5p000"]]
 )
-def test_psa_matches_default(cls, ims):
+@pytest.mark.parametrize("suffix", ["_BASIN", "_CYBERSHAKE", "_PRVI"])
+def test_psa_matches_default(cls, ims, suffix):
     s = vector_scenario()
-    full = cls(s, basin=True)
-    m = cls(s, ims=ims, basin=True)
+    full = variant(cls, s, suffix)
+    m = variant(cls, s, suffix, ims=ims)
     cols = [
         np.flatnonzero(np.isclose(full.periods, m.psa_period(im)))[0]
         for im in ims
@@ -1455,25 +1619,28 @@ def test_psa_matches_default(cls, ims):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
-def test_psa_ngawest2_21_is_all_periods(cls):
+def test_psa_ngawest2_21(cls):
     s = vector_scenario(50)
-    m = cls(s, ims=["psa_ngawest2_21"])
-    np.testing.assert_array_equal(m.spec_accels, cls(s).spec_accels)
+    m = variant(cls, s, "_CYBERSHAKE", ims=["psa_ngawest2_21"])
+    full = variant(cls, s, "_CYBERSHAKE")
+    cols = period_columns(cls, cls.PERIODS_NGAWEST2_21) - cls.INDICES_PSA[0]
+    np.testing.assert_array_equal(m.spec_accels, full.spec_accels[:, cols])
     np.testing.assert_allclose(m.periods, cls.PERIODS_NGAWEST2_21)
+    assert np.all(np.isfinite(m.spec_accels))
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 def test_pgv_only_matches_default(cls):
     s = vector_scenario(50)
-    np.testing.assert_array_equal(cls(s, ims=["pgv"]).pgv, cls(s).pgv)
+    np.testing.assert_array_equal(variant(cls, s, ims=["pgv"]).pgv, variant(cls, s).pgv)
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 @pytest.mark.parametrize("ims", [None, ["pga"]])
 def test_ln_pga(cls, ims):
-    m = cls(vector_scenario(50), ims=ims)
+    m = variant(cls, vector_scenario(50), ims=ims)
     np.testing.assert_allclose(m.ln_pga, np.log(m.pga), rtol=1e-15)
 
 
@@ -1482,11 +1649,10 @@ def test_ln_pga(cls, ims):
 def test_timing():
     s = vector_scenario(100_000)
     for cls in ALL_CLASSES:
-        options = dict(basin=True)
         start = time.perf_counter()
-        cls(s, **options)
+        variant(cls, s, "_BASIN")
         all_ims = time.perf_counter() - start
         start = time.perf_counter()
-        cls(s, ims=["pga"], **options)
+        variant(cls, s, "_BASIN", ims=["pga"])
         pga = time.perf_counter() - start
         print(f"{cls.__name__}: {all_ims:.2f} s (all), {pga:.2f} s (pga)")

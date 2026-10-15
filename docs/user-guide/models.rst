@@ -227,55 +227,51 @@ Generated from the model registry. To reproduce::
 .. table:: Registered models and their capabilities
    :widths: auto
 
-   ============  ==========================================================  ==================  ==================
-   Abbrev        Model                                                       Provides            Tectonic setting
-   ============  ==========================================================  ==================  ==================
-   AB20          Abrahamson and Bhasin (2020)                                pgv                 --
-   AGA16         Abrahamson, Gregor, & Addo (2016)                           pga, psa            subduction
-   AG20          Abrahamson & Gülerce (2020)                                 pga, psa            subduction
-   ASY16         Abrahamson, Shi, & Yang (2016)                              arias               --
-   AS96          Abrahamson Silva (1996)                                     duration            --
-   ASK14         Abrahamson, Silva, & Kamai (2014)                           pga, pgv, psa       active_crustal
-   ASK14_NSHMP   Abrahamson, Silva, & Kamai (2014) (USGS nshmp-lib)          pga, pgv, psa       active_crustal
-   AS16          Afshari and Stewart (2016)                                  duration            --
-   ASB14         Akkar, Sandikkaya, & Bommer (2014)                          pga, pgv, psa       --
-   --            AlemuEtAlSoilType                                           soil_curves         --
-   AB06          Atkinson and Boore (2006)                                   pga, pgd, pgv, psa  stable_continental
-   AM09          Atkinson and Macias (2009)                                  pga, pgv, psa       subduction
-   BA18          Bayless and Abrahamson (2018)                               correlation         active_crustal
-   BA19          Bayless and Abrahamson (2019)                               fas                 active_crustal
-   BSSA14        Boore, Stewart, Seyhan, and Atkinson (2014)                 pga, pgv, psa       active_crustal
-   BSSA14_NSHMP  Boore, Stewart, Seyhan, & Atkinson (2014) (USGS nshmp-lib)  pga, pgv, psa       active_crustal
-   C03           Campbell (2003)                                             psa                 stable_continental
-   CB14          Campbell & Bozorgnia (2014)                                 pga, pgv, psa       active_crustal
-   CB14_NSHMP    Campbell & Bozorgnia (2014) (USGS nshmp-lib)                pga, pgv, psa       active_crustal
-   CY14          Chiou and Youngs (2014)                                     pga, pgv, psa       active_crustal
-   CY14_NSHMP    Chiou & Youngs (2014) (USGS nshmp-lib)                      pga, pgv, psa       active_crustal
-   CB14          Coppersmith and Bommer (2014)                               pga, psa            subduction
-   --            DarendeliSoilType                                           soil_curves         --
-   DBC13         Derras, Bard & Cotton (2014)                                pga, pgv, psa       --
-   GA11          Gülerce & Abrahamson (2011)                                 vh_ratio            active_crustal
-   HKR14         Hermkes, Kuehn, Riggelsen (2014)                            pga, pgv, psa       --
-   I14           Idriss (2014)                                               pga, psa            active_crustal
-   KS06          Kempton Stewart (2006)                                      duration            --
-   --            KishidaSoilType                                             soil_curves         --
-   KBCG20        Kuehn et al. (2020)                                         pga, pgv, psa       subduction
-   MAL21         Macedo, Abrahamson, & Liu (2021)                            cav                 --
-   --            MenqSoilType                                                soil_curves         --
-   NGAE          NGA-East (USGS nshmp-lib)                                   pga, pgv, psa       stable_continental
-   NGAESeeds     NGA-East USGS seed model tree (nshmp-lib)                   pga, psa            stable_continental
-   PSBAH20       Parker et al. (2020)                                        pga, pgv, psa       subduction
-   Pea11         Pezeshk et al. (2011)                                       pga, psa            stable_continental
-   PR23          Pinilla-Ramos et al. (2023)                                 duration            --
-   PR24          Pinilla-Ramos et al. (2024)                                 duration            subduction
-   --            RollinsEtAlSoilType                                         soil_curves         --
-   ST            Single-corner Source Theory                                 fas                 --
-   PJS17         Stafford (2017)                                             correlation         active_crustal
-   Sea22         Stafford et al. (2022)                                      fas                 --
-   TP05          Tavakoli and Pezeshk (2005)                                 pga, psa            stable_continental
-   --            WangSoilType                                                soil_curves         --
-   Zea06         Zhao et al. (2006)                                          pga, pgv, psa       subduction
-   ============  ==========================================================  ==================  ==================
+   =========  ===========================================  ==================  ==================
+   Abbrev     Model                                        Provides            Tectonic setting
+   =========  ===========================================  ==================  ==================
+   AB20       Abrahamson and Bhasin (2020)                 pgv                 --
+   AGA16      Abrahamson, Gregor, & Addo (2016)            pga, psa            subduction
+   AG20       Abrahamson & Gülerce (2020)                  pga, psa            subduction
+   ASY16      Abrahamson, Shi, & Yang (2016)               arias               --
+   AS96       Abrahamson Silva (1996)                      duration            --
+   ASK14      Abrahamson, Silva, & Kamai (2014)            pga, pgv, psa       active_crustal
+   AS16       Afshari and Stewart (2016)                   duration            --
+   ASB14      Akkar, Sandikkaya, & Bommer (2014)           pga, pgv, psa       --
+   --         AlemuEtAlSoilType                            soil_curves         --
+   AB06       Atkinson and Boore (2006)                    pga, pgd, pgv, psa  stable_continental
+   AM09       Atkinson and Macias (2009)                   pga, pgv, psa       subduction
+   BA18       Bayless and Abrahamson (2018)                correlation         active_crustal
+   BA19       Bayless and Abrahamson (2019)                fas                 active_crustal
+   BSSA14     Boore, Stewart, Seyhan, and Atkinson (2014)  pga, pgv, psa       active_crustal
+   C03        Campbell (2003)                              psa                 stable_continental
+   CB14       Campbell & Bozorgnia (2014)                  pga, pgv, psa       active_crustal
+   CY14       Chiou and Youngs (2014)                      pga, pgv, psa       active_crustal
+   CB14       Coppersmith and Bommer (2014)                pga, psa            subduction
+   --         DarendeliSoilType                            soil_curves         --
+   DBC13      Derras, Bard & Cotton (2014)                 pga, pgv, psa       --
+   GA11       Gülerce & Abrahamson (2011)                  vh_ratio            active_crustal
+   HKR14      Hermkes, Kuehn, Riggelsen (2014)             pga, pgv, psa       --
+   I14        Idriss (2014)                                pga, psa            active_crustal
+   KS06       Kempton Stewart (2006)                       duration            --
+   --         KishidaSoilType                              soil_curves         --
+   KBCG20     Kuehn et al. (2020)                          pga, pgv, psa       subduction
+   MAL21      Macedo, Abrahamson, & Liu (2021)             cav                 --
+   --         MenqSoilType                                 soil_curves         --
+   NGAE       NGA-East (USGS nshmp-lib)                    pga, pgv, psa       stable_continental
+   NGAESeeds  NGA-East USGS seed model tree (nshmp-lib)    pga, psa            stable_continental
+   PSBAH20    Parker et al. (2020)                         pga, pgv, psa       subduction
+   Pea11      Pezeshk et al. (2011)                        pga, psa            stable_continental
+   PR23       Pinilla-Ramos et al. (2023)                  duration            --
+   PR24       Pinilla-Ramos et al. (2024)                  duration            subduction
+   --         RollinsEtAlSoilType                          soil_curves         --
+   ST         Single-corner Source Theory                  fas                 --
+   PJS17      Stafford (2017)                              correlation         active_crustal
+   Sea22      Stafford et al. (2022)                       fas                 --
+   TP05       Tavakoli and Pezeshk (2005)                  pga, psa            stable_continental
+   --         WangSoilType                                 soil_curves         --
+   Zea06      Zhao et al. (2006)                           pga, pgv, psa       subduction
+   =========  ===========================================  ==================  ==================
 
 Models are filed by the independent variable of what they predict -- shear
 strain in :mod:`pygmm.soil_curves`, frequency in
@@ -296,7 +292,6 @@ strain in :mod:`pygmm.soil_curves`, frequency in
    ground_motion.abrahamson_shi_yang_2016.AbrahamsonShiYang2016
    ground_motion.abrahamson_silva_1996.AbrahamsonSilva1996
    ground_motion.abrahamson_silva_kamai_2014.AbrahamsonSilvaKamai2014
-   ground_motion.nga_west2_nshmp.AbrahamsonSilvaKamai2014Nshmp
    ground_motion.afshari_stewart_2016.AfshariStewart2016
    ground_motion.akkar_sandikkaya_bommer_2014.AkkarSandikkayaBommer2014
    soil_curves.alemu_2025.AlemuEtAlSoilType
@@ -305,12 +300,9 @@ strain in :mod:`pygmm.soil_curves`, frequency in
    fourier_spectrum.bayless_abrahamson_2018.BaylessAbrahamson2018
    fourier_spectrum.bayless_abrahamson_2019.BaylessAbrahamson2019
    ground_motion.boore_stewart_seyhan_atkinson_2014.BooreStewartSeyhanAtkinson2014
-   ground_motion.nga_west2_nshmp.BooreStewartSeyhanAtkinson2014Nshmp
    ground_motion.campbell_2003.Campbell2003
    ground_motion.campbell_bozorgnia_2014.CampbellBozorgnia2014
-   ground_motion.nga_west2_nshmp.CampbellBozorgnia2014Nshmp
    ground_motion.chiou_youngs_2014.ChiouYoungs2014
-   ground_motion.nga_west2_nshmp.ChiouYoungs2014Nshmp
    ground_motion.coppersmith_bommer_2014.CoppersmithBommer2014
    soil_curves.darendeli_2001.DarendeliSoilType
    ground_motion.derras_bard_cotton_2014.DerrasBardCotton2014
@@ -469,17 +461,13 @@ following models have been implemented.
     ~ground_motion.abrahamson_gulerce_2020.AbrahamsonGulerce2020
     ~ground_motion.abrahamson_shi_yang_2016.AbrahamsonShiYang2016
     ~ground_motion.abrahamson_silva_kamai_2014.AbrahamsonSilvaKamai2014
-    ~ground_motion.nga_west2_nshmp.AbrahamsonSilvaKamai2014Nshmp
     ~ground_motion.akkar_sandikkaya_bommer_2014.AkkarSandikkayaBommer2014
     ~ground_motion.atkinson_boore_2006.AtkinsonBoore2006
     ~ground_motion.atkinson_macias_2009.AtkinsonMacias2009
     ~ground_motion.boore_stewart_seyhan_atkinson_2014.BooreStewartSeyhanAtkinson2014
-    ~ground_motion.nga_west2_nshmp.BooreStewartSeyhanAtkinson2014Nshmp
     ~ground_motion.campbell_2003.Campbell2003
     ~ground_motion.campbell_bozorgnia_2014.CampbellBozorgnia2014
-    ~ground_motion.nga_west2_nshmp.CampbellBozorgnia2014Nshmp
     ~ground_motion.chiou_youngs_2014.ChiouYoungs2014
-    ~ground_motion.nga_west2_nshmp.ChiouYoungs2014Nshmp
     ~ground_motion.coppersmith_bommer_2014.CoppersmithBommer2014
     ~ground_motion.derras_bard_cotton_2014.DerrasBardCotton2014
     ~ground_motion.hermkes_kuehn_riggelsen_2014.HermkesKuehnRiggelsen2014

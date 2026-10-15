@@ -1,5 +1,5 @@
-# Boore, Stewart, Seyhan, and Atkinson (2014) Puerto Rico and U.S. Virgin Islands (PRVI) coefficients from USGS nshmp-lib (public domain, commit 44728a7d): src/main/resources/gmm/coeffs/BSSA14_PRVI.csv. Column T is renamed to period (s) with PGA as 0 and PGV as -1, and the rows are sorted by period.
-period,e0,e1,e2,e3,c
+# Boore, Stewart, Seyhan, and Atkinson (2014) Puerto Rico and U.S. Virgin Islands (PRVI) coefficients from USGS nshmp-lib (public domain, commit 44728a7d): src/main/resources/gmm/coeffs/BSSA14_PRVI.csv. Column T is renamed to period (s) with PGA as 0 and PGV as -1, the coefficients are renamed (e0 as e_0, e1 as e_1, e2 as e_2, e3 as e_3), and the rows are sorted by period.
+period,e_0,e_1,e_2,e_3,c
 -1,4.675043,4.716043,4.487043,4.671043,-0.780803
 0,0.227080,0.265380,0.025680,0.233680,-0.671040
 0.01,0.233180,0.271380,0.031680,0.239680,-0.669915

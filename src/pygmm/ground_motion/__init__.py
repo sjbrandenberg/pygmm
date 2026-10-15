@@ -42,12 +42,6 @@ from .kishida_2017 import calc_cond_mean_spectrum_vector
 from .kuehn_et_al_2020 import KuehnEtAl2020
 from .macedo_abrahamson_liu_2021 import MacedoAbrahamsonLiu2021
 from .nga_east import NgaEast, NgaEastSeeds
-from .nga_west2_nshmp import (
-    AbrahamsonSilvaKamai2014Nshmp,
-    BooreStewartSeyhanAtkinson2014Nshmp,
-    CampbellBozorgnia2014Nshmp,
-    ChiouYoungs2014Nshmp,
-)
 from .parker_et_al_2020 import ParkerEtAl2020
 from .pezeshk_zandieh_tavakoli_2011 import PezeshkZandiehTavakoli2011
 from .pinilla_ramos_et_al_2023 import PinillaRamosEtAl2023
@@ -62,18 +56,14 @@ __all__ = [
     "AbrahamsonShiYang2016",
     "AbrahamsonSilva1996",
     "AbrahamsonSilvaKamai2014",
-    "AbrahamsonSilvaKamai2014Nshmp",
     "AfshariStewart2016",
     "AkkarSandikkayaBommer2014",
     "AtkinsonBoore2006",
     "AtkinsonMacias2009",
     "BooreStewartSeyhanAtkinson2014",
-    "BooreStewartSeyhanAtkinson2014Nshmp",
     "Campbell2003",
     "CampbellBozorgnia2014",
-    "CampbellBozorgnia2014Nshmp",
     "ChiouYoungs2014",
-    "ChiouYoungs2014Nshmp",
     "CoppersmithBommer2014",
     "DerrasBardCotton2014",
     "GulerceAbrahamson2011",

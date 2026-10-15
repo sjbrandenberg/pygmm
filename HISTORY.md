@@ -52,18 +52,22 @@ title: History
   `depth_tor` for intraslab events, and extrapolates 7.5 and 10 s with BC Hydro (2012) and AM09,
   and both models interpolate the periods without coefficients and compute PGV with the
   Abrahamson and Bhasin (2020) conditional model. Both reproduce the nshmp-lib reference results.
-- Added: the USGS nshmp-lib versions of the NGA-West2 models used by the NSHM:
-  `AbrahamsonSilvaKamai2014Nshmp`, `BooreStewartSeyhanAtkinson2014Nshmp`,
-  `CampbellBozorgnia2014Nshmp`, and `ChiouYoungs2014Nshmp` (module
-  `pygmm.ground_motion.nga_west2_nshmp`), with the `epistemic` (USGS NGA-West2 epistemic branches, collapsed as in
-  nshmp-lib), `basin` (USGS deep basin scaling), `cybershake` (2023 NSHM CyberShake basin terms),
-  `prvi` (2025 PRVI coefficients), and `vs30_measured` options that select the nshmp-lib `Gmm`
-  variants (`GMM_IDS`: `ASK_14`, `_BASE`, `_BASIN`, `_CYBERSHAKE`, `_VS30_MEASURED`, `_PRVI`,
-  etc.). The active crust logic tree of the current CONUS NSHM uses the four `_BASIN` variants with
-  weights of 0.25. The models reproduce the nshmp-lib reference results. The
-  style of faulting is given by `mechanism` (see `mechanism_from_rake`), `width` can be computed from
-  `depth_bor`, and `depth_hyp` (CB14) from the rupture geometry as in nshmp-lib. The published
-  NGA-West2 models are unchanged.
+- Added: options of the NGA-West2 models (`AbrahamsonSilvaKamai2014`,
+  `BooreStewartSeyhanAtkinson2014`, `CampbellBozorgnia2014`, and `ChiouYoungs2014`) for the USGS
+  nshmp-lib variants used by the NSHM (see `pygmm.ground_motion.nshmp`): `nshmp` (the nshmp-lib
+  implementation, e.g., no basin term for a `depth_1_0` of NaN, the hanging wall from `dist_x`,
+  `width` from `depth_bor`, and `depth_hyp` (CB14) from the rupture geometry), `epistemic` (USGS
+  NGA-West2 epistemic branches, collapsed as in nshmp-lib, with the branches in `ln_branches`),
+  `basin` (USGS deep basin scaling), `cybershake` (2023 NSHM CyberShake basin terms), and `prvi`
+  (2025 PRVI coefficients). `GMM_IDS` maps the nshmp-lib `Gmm` ids (`ASK_14`, `_BASE`, `_BASIN`,
+  `_CYBERSHAKE`, `_VS30_MEASURED`, `_PRVI`, etc.) to the options and, for ASK14 and CY14, the
+  `vs_source` scenario value. The active crust logic tree of the current CONUS NSHM uses the four
+  `_BASIN` variants with weights of 0.25. The options are off by default, which gives the published
+  models (unchanged). ASK14, CB14, and CY14 reproduce the nshmp-lib reference results. BSSA14 uses
+  the published coefficients, which differ from the rounded nshmp-lib coefficients (and its `f_4`
+  at 0.05, 0.075, 0.5, and 1.5 s), so it differs from nshmp-lib by up to about 0.04 in the natural
+  log of the median at these periods for soft sites and less than 0.001 otherwise.
+  `mechanism_from_rake` gives the nshmp-lib style of faulting of a rake.
 - Added: `NgaEastSeeds`, the USGS NGA-East seed model logic tree of nshmp-lib (14 weighted seed
   models; `NGA_EAST_SEEDS_2018`, `_2023`, and `_2026` with the `adjusted` and `cpa` variants), which
   the current CONUS NSHM combines with `NgaEast` for stable crust. The model reproduces the

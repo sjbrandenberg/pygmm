@@ -7,6 +7,7 @@ import numpy as np
 from .. import model
 from .._types import ArrayLike
 from ..registry import register
+from . import nshmp as usgs
 
 __author__ = "Albert Kottke"
 
@@ -31,8 +32,8 @@ def _pow(x: ArrayLike, y: float) -> ArrayLike:
 
 
 @register(tectonic="active_crustal")
-class CampbellBozorgnia2014(model.GroundMotionModel):
-    """Campbell and Bozorgnia (2014, :cite:`campbell14`) model.
+class CampbellBozorgnia2014(usgs.NshmpOptions, model.GroundMotionModel):
+    r"""Campbell and Bozorgnia (2014, :cite:`campbell14`) model.
 
     This model was developed for active tectonic regions as part of the
     NGA-West2 effort.
@@ -48,6 +49,44 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
     have shape (N, periods), so, for example, ``pga`` has shape (N,) and
     ``spec_accels`` has shape (N, 21).
 
+    The options select the variants of the model in the USGS nshmp-lib library
+    (``CampbellBozorgnia_2014``, commit 44728a7d; see
+    :mod:`pygmm.ground_motion.nshmp`), and are off by default, which gives the
+    published model. With ``nshmp=True``, the model is computed as in
+    nshmp-lib, which:
+
+    - computes ``width`` from the depth to the bottom of the rupture,
+      :math:`(Z_{bor} - Z_{tor}) / \sin \delta`, if ``width`` is *None* and
+      ``depth_bor`` is given, and ``depth_hyp`` as the middle of the rupture,
+      :math:`Z_{tor} + W \sin(\delta) / 2`, if ``depth_hyp`` is *None*
+      (``Faults.hypocentralDepth``),
+    - uses the :math:`V_{S30}` based reference :math:`Z_{2.5}` (equation 33)
+      if ``depth_2_5`` is *None* or NaN,
+    - computes the reference rock PGA (:math:`V_{S30}` = 1100 m/sec) with
+      :math:`Z_{2.5}` = 0.398 km (or, with ``basin=True``, the reference depth
+      for 1100 m/sec, as the published model), and only uses it if
+      :math:`V_{S30} < k_1` of the period (otherwise it is 0, also for the
+      PGA limit of the short periods),
+    - for periods from 0.01 to 0.25 s (the published model: shorter than 0.25
+      s), uses the PGA if the spectral acceleration is smaller,
+    - uses the :math:`f_2(R_x)` hanging-wall taper for :math:`R_x \ge R_1`,
+    - and treats an unspecified style of faulting (``mechanism`` of "U") as
+      strike-slip.
+
+    nshmp-lib only has the California model, so ``region`` should not be given
+    with ``nshmp=True``. The nshmp-lib ``Gmm`` ids are (see :attr:`GMM_IDS`):
+
+    ========================  =========================================
+    nshmp-lib ``Gmm``         Options
+    ========================  =========================================
+    ``CB_14``                 ``nshmp=True, epistemic=True``
+    ``CB_14_BASE``            ``nshmp=True``
+    ``CB_14_BASIN``           ``nshmp=True, epistemic=True, basin=True``
+    ``CB_14_CYBERSHAKE``      ``nshmp=True, epistemic=True, basin=True,
+                              cybershake=True``
+    ``CB_14_PRVI``            ``nshmp=True, prvi=True``
+    ========================  =========================================
+
     Parameters
     ----------
     scenario : :class:`pygmm.model.Scenario`
@@ -58,6 +97,17 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
         periods), and/or "psa_all" (all 21 periods). Computing only
         the needed intensity measures is much faster for large vectorized
         scenarios. If *None* (default), all intensity measures are computed.
+    nshmp : bool, optional
+        compute the model as in nshmp-lib (default *False*)
+    epistemic : bool, optional
+        include the USGS epistemic branches (default *False*)
+    basin : bool, optional
+        use the USGS deep basin model (default *False*)
+    cybershake : bool, optional
+        use the CyberShake basin terms (default *False*, requires
+        ``basin=True``)
+    prvi : bool, optional
+        use the PRVI coefficients (default *False*)
 
     Examples
     --------
@@ -74,6 +124,17 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
     >>> m.spec_accels.shape
     (2, 21)
 
+    The nshmp-lib ``CB_14_BASIN`` variant, with the width and hypocentral
+    depth from the depth to the bottom of the rupture:
+
+    >>> s = pygmm.Scenario(
+    ...     mag=np.array([6.0, 7.0]), dist_rup=np.array([10.0, 50.0]),
+    ...     dist_jb=np.array([8.0, 48.0]), dist_x=np.array([8.0, -48.0]),
+    ...     dip=60.0, depth_tor=2.0, depth_bor=15.0, mechanism="RS",
+    ...     v_s30=400.0, depth_2_5=np.array([np.nan, 4.0]))
+    >>> options = pygmm.CampbellBozorgnia2014.GMM_IDS["CB_14_BASIN"]
+    >>> pygmm.CampbellBozorgnia2014(s, **options).spec_accels.shape
+    (2, 21)
     """
 
     NAME = "Campbell & Bozorgnia (2014)"
@@ -86,6 +147,28 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
     COEFF = model.load_data_file("campbell_bozorgnia_2014.csv", 2)
 
     PERIODS = COEFF["period"]
+
+    #: nshmp-lib PRVI coefficients
+    COEFF_PRVI = usgs.load_coeffs("campbell_bozorgnia_2014-prvi.csv", PERIODS)
+    #: nshmp-lib CyberShake basin coefficients (``slope`` replaces
+    #: :math:`c_{16} k_3`)
+    COEFF_CYBERSHAKE = usgs.load_coeffs(
+        "campbell_bozorgnia_2014-cybershake.csv", PERIODS
+    )
+
+    #: Model options of the nshmp-lib ``Gmm`` ids
+    GMM_IDS = {
+        "CB_14": dict(nshmp=True, epistemic=True),
+        "CB_14_BASE": dict(nshmp=True),
+        "CB_14_BASIN": dict(nshmp=True, epistemic=True, basin=True),
+        "CB_14_CYBERSHAKE": dict(
+            nshmp=True, epistemic=True, basin=True, cybershake=True
+        ),
+        "CB_14_PRVI": dict(nshmp=True, prvi=True),
+    }
+
+    #: :math:`Z_{2.5}` (km) of the reference rock PGA in nshmp-lib
+    DEPTH_2_5_REF_NSHMP = 0.398
 
     # Period independent model coefficients
     COEFF_C = 1.88
@@ -121,8 +204,19 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
 
     def _check_inputs(self) -> None:
         """Check the inputs."""
-        super()._check_inputs()
         s = self._scenario
+        if self._nshmp:
+            # nshmp-lib defaults
+            if s["mechanism"] is not None:
+                # No style of faulting term for an unspecified mechanism
+                mechanism = np.asarray(s["mechanism"])
+                s["mechanism"] = np.where(
+                    model.equals(mechanism, "U"), "SS", mechanism
+                )[()]
+            if s["depth_2_5"] is None:
+                # Reference depth from V_s30
+                s["depth_2_5"] = np.nan
+        super()._check_inputs()
 
         if np.ndim(s.mechanism) > 0 or np.ndim(s.mag) > 0:
             self._check_mag_by_mechanism()
@@ -146,17 +240,29 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
             s.depth_tor = self._calc_depth_tor(s.mag, s.mechanism)
 
         if s.width is None:
-            s.width = CampbellBozorgnia2014.calc_width(
-                s.mag, s.dip, s.depth_tor, s.depth_bot
-            )
+            if self._nshmp and s.depth_bor is not None:
+                s.width = (np.asarray(s.depth_bor) - np.asarray(s.depth_tor)) / np.sin(
+                    np.radians(s.dip)
+                )
+            else:
+                s.width = CampbellBozorgnia2014.calc_width(
+                    s.mag, s.dip, s.depth_tor, s.depth_bot
+                )
 
         if s.depth_bor is None:
             s.depth_bor = self.calc_depth_bor(s.depth_tor, s.dip, s.width)
 
         if s.depth_hyp is None:
-            s.depth_hyp = CampbellBozorgnia2014.calc_depth_hyp(
-                s.mag, s.dip, s.depth_tor, s.depth_bor
-            )
+            if self._nshmp:
+                # Middle of the rupture (nshmp-lib Faults.hypocentralDepth)
+                s.depth_hyp = (
+                    np.asarray(s.depth_tor)
+                    + np.sin(np.radians(s.dip)) * np.asarray(s.width) / 2.0
+                )
+            else:
+                s.depth_hyp = CampbellBozorgnia2014.calc_depth_hyp(
+                    s.mag, s.dip, s.depth_tor, s.depth_bor
+                )
 
     def _check_mag_by_mechanism(self) -> None:
         """Check mechanism specific magnitude limits for vectorized scenarios."""
@@ -176,7 +282,16 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
                     mech,
                 )
 
-    def __init__(self, scenario: model.Scenario, ims=None):
+    def __init__(
+        self,
+        scenario: model.Scenario,
+        ims=None,
+        nshmp: bool = False,
+        epistemic: bool = False,
+        basin: bool = False,
+        cybershake: bool = False,
+        prvi: bool = False,
+    ):
         """Initialize the model.
 
         Args:
@@ -184,26 +299,56 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
             ims (str or sequence of str, optional): intensity measures to
                 compute. If *None* (default), all intensity measures are
                 computed.
+            nshmp, epistemic, basin, cybershake, prvi (bool, optional): the
+                nshmp-lib options (see :mod:`pygmm.ground_motion.nshmp`).
         """
+        self._set_options(nshmp, epistemic, basin, cybershake, prvi)
         super().__init__(scenario, ims)
+        self._coeff = self._options_coeff(self.COEFF)
 
         # The nonlinear site term and the standard deviation depend on PGA at
         # the reference condition, which only needs the PGA coefficients
-        c_ref = self.COEFF[[self.INDEX_PGA]]
+        c_ref = self._coeff[[self.INDEX_PGA]]
         pga_ref = np.exp(self._calc_ln_resp(np.nan, self.V_REF, c_ref)[..., 0])
-        ln_resp = self._calc_ln_resp(pga_ref, self._scenario.v_s30)
+        pga_rock = None
+        if self._nshmp:
+            # nshmp-lib only uses the reference PGA for V_s30 < k_1 of the period
+            pga_rock = np.where(
+                model.as_column(self._scenario.v_s30)
+                < self._coeff_rows(self._coeff).k_1,
+                model.as_column(pga_ref),
+                0.0,
+            )
+        ln_resp = self._calc_ln_resp(pga_ref, self._scenario.v_s30, pga_rock=pga_rock)
 
-        # PSA at periods shorter than 0.25 s is not less than PGA
+        # PSA at periods shorter than 0.25 s (from 0.01 to 0.25 s in nshmp-lib)
+        # is not less than PGA
         periods = self._coeff_rows(self.PERIODS)
-        is_short = (0 < periods) & (periods < 0.25)
+        if self._nshmp:
+            is_short = (0.01 <= periods) & (periods <= 0.25)
+        else:
+            is_short = (0 < periods) & (periods < 0.25)
         if np.any(is_short):
-            c_pga = self.COEFF[[self.INDEX_PGA]]
-            ln_pga = self._calc_ln_resp(pga_ref, self._scenario.v_s30, c_pga)
+            c_pga = self._coeff[[self.INDEX_PGA]]
+            ln_pga = self._calc_ln_resp(
+                pga_ref, self._scenario.v_s30, c_pga, pga_rock=pga_rock
+            )
             ln_resp = np.where(is_short, np.maximum(ln_resp, ln_pga), ln_resp)
         self._ln_resp = ln_resp
         self._ln_std, self._tau, self._phi = self._calc_ln_std(pga_ref)
+        if self._epistemic:
+            self._ln_resp, self._branches = usgs.epistemic_branches(
+                self._ln_resp,
+                self._ln_std,
+                model.as_column(self._scenario.mag),
+                model.as_column(self._scenario.dist_jb),
+            )
+        if self._nshmp or self._epistemic:
+            self._ln_resp, self._ln_std = usgs.broadcast(self._ln_resp, self._ln_std)
 
-    def _calc_ln_resp(self, pga_ref: ArrayLike, v_s30: ArrayLike, c=None) -> np.ndarray:
+    def _calc_ln_resp(
+        self, pga_ref: ArrayLike, v_s30: ArrayLike, c=None, pga_rock=None
+    ) -> np.ndarray:
         """Calculate the natural logarithm of the response.
 
         Parameters
@@ -218,6 +363,9 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
         c : :class:`numpy.recarray`, optional
             coefficients for the periods to compute. If *None*, the
             coefficients for the requested intensity measures are used.
+        pga_rock : array_like, optional
+            reference PGA (g) of each computed period (with a trailing axis
+            for the periods), which replaces `pga_ref` (nshmp-lib).
 
         Returns
         -------
@@ -227,7 +375,7 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
         """
         s = self._scenario
         if c is None:
-            c = self._coeff_rows(self.COEFF)
+            c = self._coeff_rows(self._coeff)
         # Scenario values get a trailing axis to broadcast against the
         # coefficients, which have one value per period
         mag = model.as_column(s.mag)
@@ -266,7 +414,8 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
             ratio_2 = (dist_x - R_1) / (R_2 - R_1)
             f_hngRrup = np.where(dist_rup == 0, 1.0, (dist_rup - dist_jb) / dist_rup)
         f_hngRx = np.select(
-            [dist_x < 0, dist_x <= R_1],
+            # nshmp-lib uses f_2 for R_x = R_1
+            [dist_x < 0, dist_x < R_1 if self._nshmp else dist_x <= R_1],
             [0.0, c.h_1 + c.h_2 * ratio_1 + c.h_3 * _pow(ratio_1, 2)],
             default=np.maximum(0, c.h_4 + c.h_5 * ratio_2 + c.h_6 * _pow(ratio_2, 2)),
         )
@@ -280,13 +429,25 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
 
         f_hng = c.c_10 * f_hngRx * f_hngRrup * f_hngM * f_hngZ * f_hngDip
 
-        site_term = self._calc_site_term(
-            c,
-            model.as_column(pga_ref),
-            model.as_column(v_s30),
-            model.as_column(s.depth_2_5),
-            region,
-        )
+        if not (self._nshmp or self._basin or self._cybershake):
+            site_term = self._calc_site_term(
+                c,
+                model.as_column(pga_ref),
+                model.as_column(v_s30),
+                model.as_column(s.depth_2_5),
+                region,
+            )
+        else:
+            site_term = self._calc_site_term(
+                c,
+                model.as_column(pga_ref) if pga_rock is None else pga_rock,
+                model.as_column(v_s30),
+                None,
+                region,
+                basin=False,
+            ) + self._calc_basin_term(
+                c, model.as_column(v_s30), model.as_column(s.depth_2_5), region, pga_ref
+            )
 
         # Hypocentral depth term
         f_hypH = np.clip(model.as_column(s.depth_hyp) - 7, 0, 13)
@@ -348,8 +509,13 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
         return cls._calc_site_term(cls.COEFF, pga_ref, v_s30, depth_2_5, region)
 
     @classmethod
-    def _calc_site_term(cls, c, pga_ref, v_s30, depth_2_5, region) -> ArrayLike:
-        """Calculate the site term for the periods in the coefficients `c`."""
+    def _calc_site_term(
+        cls, c, pga_ref, v_s30, depth_2_5, region, basin: bool = True
+    ) -> ArrayLike:
+        """Calculate the site term for the periods in the coefficients `c`.
+
+        If `basin` is *False*, the basin response term is not included.
+        """
         # Site term
         vs_ratio = v_s30 / c.k_1
         with np.errstate(invalid="ignore"):
@@ -376,6 +542,8 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
                 (c.c_13 + c.k_2 * cls.COEFF_N) * np.log(vs_ratio),
             )
             f_site = f_site + np.where(is_japan, f_site_jp, 0.0)
+        if not basin:
+            return f_site
 
         # Basin response term
         is_ref = np.isnan(pga_ref)
@@ -387,21 +555,65 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
             else:
                 depth_2_5 = np.where(is_ref, depth_2_5_ref, depth_2_5)
 
+        return f_site + cls._calc_f_sed(c, depth_2_5, is_japan)
+
+    @staticmethod
+    def _calc_f_sed(c, depth_2_5, is_japan, slope=None) -> np.ndarray:
+        """Calculate the basin response term (equation 20).
+
+        `slope` replaces :math:`c_{16} k_3` (the CyberShake basin term).
+        """
         f_sed_shallow = c.c_14 * (depth_2_5 - 1)
         if np.any(is_japan):
             f_sed_shallow = f_sed_shallow + np.where(
                 is_japan, c.c_15 * (depth_2_5 - 1), 0.0
             )
-        f_sed = np.select(
+        if slope is None:
+            slope = c.c_16 * c.k_3
+        return np.select(
             [depth_2_5 <= 1, depth_2_5 <= 3],
             [f_sed_shallow, 0.0],
-            default=c.c_16
-            * c.k_3
-            * np.exp(-0.75)
-            * (1 - np.exp(-0.25 * (depth_2_5 - 3))),
+            default=slope * np.exp(-0.75) * (1 - np.exp(-0.25 * (depth_2_5 - 3))),
         )
 
-        return f_site + f_sed
+    def _calc_basin_term(self, c, v_s30, depth_2_5, region, pga_ref) -> np.ndarray:
+        """Basin response term with the nshmp-lib options.
+
+        The reference condition (`pga_ref` of NaN) uses the reference depth of
+        the published model or, with ``nshmp`` (and without ``basin``), 0.398 km.
+        """
+        periods = c.period
+        is_japan = model.equals(region, "japan")
+        # Reference depth from V_s30 -- equation 33
+        depth_ref = self.calc_depth_2_5(v_s30, region)
+        term_ref = self._calc_f_sed(c, depth_ref, is_japan)
+        if np.all(np.isnan(pga_ref)):
+            # Reference rock condition
+            if self._nshmp and not self._basin:
+                return self._calc_f_sed(c, self.DEPTH_2_5_REF_NSHMP, is_japan)
+            return term_ref
+        cybershake = self._cybershake_rows(periods)
+        slope = None
+        if np.any(cybershake):
+            # CyberShake basin coefficients
+            c_cy = self._coeff_rows(self.COEFF_CYBERSHAKE)
+            slope = np.where(cybershake, c_cy.slope, c.c_16 * c.k_3)
+        with np.errstate(invalid="ignore"):
+            term = self._calc_f_sed(c, depth_2_5, is_japan, slope)
+        if self._basin:
+            # USGS deep basin model: from the reference term at 1 km to the
+            # full term at 3 km
+            upper, lower = usgs.BASIN_Z2P5
+            in_basin = (periods > 0.5) & (depth_2_5 > upper)
+            scale = (np.clip(depth_2_5, upper, lower) - upper) / (lower - upper)
+            scaled = term_ref * (1.0 - scale) + term * scale
+            scaled = np.where(cybershake, scaled + usgs.CYBERSHAKE_CONSTANT, scaled)
+            scaled = np.where(periods == 0.75, scaled * 0.585, scaled)
+            term = np.where(in_basin, scaled, term_ref)
+        if self._nshmp:
+            # Reference term for NaN depths
+            term = np.where(np.isnan(depth_2_5), term_ref, term)
+        return term
 
     def _calc_ln_std(
         self, pga_ref: ArrayLike
@@ -420,9 +632,9 @@ class CampbellBozorgnia2014(model.GroundMotionModel):
             class:`np.array`: Logarithmic standard deviation.
 
         """
-        c = self._coeff_rows(self.COEFF)
+        c = self._coeff_rows(self._coeff)
         # The standard deviation of PGA is needed for all periods
-        c_pga = self.COEFF[[self.INDEX_PGA]]
+        c_pga = self._coeff[[self.INDEX_PGA]]
         s = self._scenario
         mag = model.as_column(s.mag)
         v_s30 = model.as_column(s.v_s30)

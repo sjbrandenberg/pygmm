@@ -7,13 +7,14 @@ import numpy as np
 from .. import model
 from .._types import ArrayLike
 from ..registry import register
+from . import nshmp as usgs
 from .chiou_youngs_2014 import ChiouYoungs2014 as CY14
 
 __author__ = "Albert Kottke"
 
 
 @register(tectonic="active_crustal")
-class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
+class BooreStewartSeyhanAtkinson2014(usgs.NshmpOptions, model.GroundMotionModel):
     """Boore, Stewart, Seyhan, and Atkinson (2014, :cite:`boore14`) model.
 
     This model was developed for active tectonic regions as part of the
@@ -71,6 +72,41 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
     as in other models. For arrays of N scenarios, they have shape
     (N, periods), so, for example, ``pga`` has shape (N,).
 
+    The options select the variants of the model in the USGS nshmp-lib library
+    (``BooreEtAl_2014``, commit 44728a7d; see
+    :mod:`pygmm.ground_motion.nshmp`), and are off by default, which gives the
+    published model. With ``nshmp=True``, the model is computed as in
+    nshmp-lib, which has no basin term if ``depth_1_0`` is *None* or NaN.
+    nshmp-lib only has the global (California and Taiwan) anelastic
+    attenuation, so ``region`` should not be given with ``nshmp=True``. The
+    published coefficients (revised 2014-07-15) are used for all of the
+    options. The nshmp-lib coefficients are rounded (e.g., :math:`c`,
+    :math:`c_2`, :math:`f_6`, and :math:`f_7`) and have different :math:`f_4`
+    at 0.05, 0.075, 0.5, and 1.5 s (-0.1963, -0.2287, -0.1704, and -0.0679
+    instead of -0.192, -0.235, -0.175, and -0.062), so the natural log of the
+    median differs from nshmp-lib by up to about 0.04 at these periods for
+    soft sites and strong shaking (e.g., 0.043 at 1.5 s for :math:`V_{S30}`
+    of 180 m/sec, :math:`M` 8.2, and :math:`R_{JB}` of 0 km, and 0.017 for
+    300 m/sec), and by less than 0.001 at the other periods. The standard
+    deviations are the same.
+
+    The nshmp-lib ``Gmm`` ids are (see :attr:`GMM_IDS`):
+
+    ========================  =========================================
+    nshmp-lib ``Gmm``         Options
+    ========================  =========================================
+    ``BSSA_14``               ``nshmp=True, epistemic=True``
+    ``BSSA_14_BASE``          ``nshmp=True``
+    ``BSSA_14_BASIN``         ``nshmp=True, epistemic=True, basin=True``
+    ``BSSA_14_CYBERSHAKE``    ``nshmp=True, epistemic=True, basin=True,
+                              cybershake=True``
+    ``BSSA_14_PRVI``          ``nshmp=True, prvi=True``
+    ========================  =========================================
+
+    The CyberShake and PRVI coefficients are only available at the periods of
+    nshmp-lib (PGA, PGV, and the 21 NGA-West2 comparison periods), and the
+    results at the other periods are NaN with these options.
+
     Parameters
     ----------
     scenario : :class:`pygmm.model.Scenario`
@@ -81,6 +117,17 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         periods), and/or "psa_all" (all 105 periods). Computing only
         the needed intensity measures is much faster for large vectorized
         scenarios. If *None* (default), all intensity measures are computed.
+    nshmp : bool, optional
+        compute the model as in nshmp-lib (default *False*)
+    epistemic : bool, optional
+        include the USGS epistemic branches (default *False*)
+    basin : bool, optional
+        use the USGS deep basin model (default *False*)
+    cybershake : bool, optional
+        use the CyberShake basin terms (default *False*, requires
+        ``basin=True``)
+    prvi : bool, optional
+        use the PRVI coefficients (default *False*)
 
     Examples
     --------
@@ -95,6 +142,17 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
     >>> m.spec_accels.shape
     (2, 21)
 
+    The nshmp-lib ``BSSA_14_CYBERSHAKE`` variant:
+
+    >>> options = pygmm.BooreStewartSeyhanAtkinson2014.GMM_IDS["BSSA_14_CYBERSHAKE"]
+    >>> s = pygmm.Scenario(
+    ...     mag=np.array([6.0, 7.0]), dist_jb=np.array([8.0, 48.0]),
+    ...     mechanism=np.array(["SS", "U"]), v_s30=400.0,
+    ...     depth_1_0=np.array([np.nan, 0.6]))
+    >>> m = pygmm.BooreStewartSeyhanAtkinson2014(
+    ...     s, ims="psa_ngawest2_21", **options)
+    >>> m.spec_accels.shape
+    (2, 21)
     """
 
     NAME = "Boore, Stewart, Seyhan, and Atkinson (2014)"
@@ -106,6 +164,27 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
     # Load the coefficients for the model
     COEFF = model.load_data_file("boore_stewart_seyhan_atkinson-2014.csv", 2)
     PERIODS = COEFF["period"]
+
+    #: nshmp-lib PRVI coefficients (only at the nshmp-lib periods)
+    COEFF_PRVI = usgs.load_coeffs(
+        "boore_stewart_seyhan_atkinson_2014-prvi.csv", PERIODS
+    )
+    #: nshmp-lib CyberShake basin coefficients (only at the nshmp-lib periods),
+    #: with ``f_6 * dz_1`` for :math:`\delta Z_{1.0}` up to ``dz1_max``
+    COEFF_CYBERSHAKE = usgs.load_coeffs(
+        "boore_stewart_seyhan_atkinson_2014-cybershake.csv", PERIODS
+    )
+
+    #: Model options of the nshmp-lib ``Gmm`` ids
+    GMM_IDS = {
+        "BSSA_14": dict(nshmp=True, epistemic=True),
+        "BSSA_14_BASE": dict(nshmp=True),
+        "BSSA_14_BASIN": dict(nshmp=True, epistemic=True, basin=True),
+        "BSSA_14_CYBERSHAKE": dict(
+            nshmp=True, epistemic=True, basin=True, cybershake=True
+        ),
+        "BSSA_14_PRVI": dict(nshmp=True, prvi=True),
+    }
 
     INDEX_PGV = 0
     INDEX_PGA = 1
@@ -140,7 +219,16 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         ),
     ]
 
-    def __init__(self, scenario: model.Scenario, ims=None):
+    def __init__(
+        self,
+        scenario: model.Scenario,
+        ims=None,
+        nshmp: bool = False,
+        epistemic: bool = False,
+        basin: bool = False,
+        cybershake: bool = False,
+        prvi: bool = False,
+    ):
         """Initialize the model.
 
         Args:
@@ -148,14 +236,27 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
             ims (str or sequence of str, optional): intensity measures to
                 compute. If *None* (default), all intensity measures are
                 computed.
+            nshmp, epistemic, basin, cybershake, prvi (bool, optional): the
+                nshmp-lib options (see :mod:`pygmm.ground_motion.nshmp`).
         """
+        self._set_options(nshmp, epistemic, basin, cybershake, prvi)
         super().__init__(scenario, ims)
+        self._coeff = self._options_coeff(self.COEFF)
         # The nonlinear site term depends on PGA at the reference condition,
         # which only needs the PGA coefficients
-        c_ref = self.COEFF[[self.INDEX_PGA]]
+        c_ref = self._coeff[[self.INDEX_PGA]]
         pga_ref = np.exp(self._calc_ln_resp(np.nan, c_ref)[..., 0])
         self._ln_resp = self._calc_ln_resp(pga_ref)
         self._ln_std, self._tau, self._phi = self._calc_ln_std()
+        if self._epistemic:
+            self._ln_resp, self._branches = usgs.epistemic_branches(
+                self._ln_resp,
+                self._ln_std,
+                model.as_column(self._scenario.mag),
+                model.as_column(self._scenario.dist_jb),
+            )
+        if self._nshmp or self._epistemic:
+            self._ln_resp, self._ln_std = usgs.broadcast(self._ln_resp, self._ln_std)
 
     def _check_inputs(self) -> None:
         """Check the inputs."""
@@ -229,7 +330,7 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         """
         s = self._scenario
         if c is None:
-            c = self._coeff_rows(self.COEFF)
+            c = self._coeff_rows(self._coeff)
         # Scenario values get a trailing axis to broadcast against the
         # coefficients, which have one value per period
         mag = model.as_column(s.mag)
@@ -279,16 +380,47 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         else:
             # Compute the site term. The basin model uses the Japan relation for
             # Z1.0 for the Japan region, and the global relation otherwise.
-            site = self._calc_site_term(
-                c,
-                model.as_column(pga_ref),
-                model.as_column(s.v_s30),
-                None if s.depth_1_0 is None else model.as_column(s.depth_1_0),
-                s.region if np.ndim(s.region) == 0 else region,
-            )
+            v_s30 = model.as_column(s.v_s30)
+            depth_1_0 = None if s.depth_1_0 is None else model.as_column(s.depth_1_0)
+            region_ = s.region if np.ndim(s.region) == 0 else region
+            if not (self._nshmp or self._basin or self._cybershake):
+                site = self._calc_site_term(
+                    c, model.as_column(pga_ref), v_s30, depth_1_0, region_
+                )
+            else:
+                site = self._calc_site_term(
+                    c, model.as_column(pga_ref), v_s30, None, region_, basin=False
+                ) + self._calc_basin_term(c, v_s30, depth_1_0, region_)
 
         ln_resp = event + path + site
         return ln_resp
+
+    def _calc_basin_term(self, c, v_s30, depth_1_0, region) -> np.ndarray:
+        """Basin depth term with the nshmp-lib options."""
+        periods = c.period
+        if depth_1_0 is None:
+            depth_1_0 = np.nan
+        delta_depth_1_0 = depth_1_0 - CY14.calc_depth_1_0(v_s30, region)
+        if self._nshmp:
+            # No basin term for NaN depths
+            delta_depth_1_0 = np.where(np.isnan(depth_1_0), 0.0, delta_depth_1_0)
+        f_dz1 = np.minimum(c.f_6 * delta_depth_1_0, c.f_7)
+        cybershake = self._cybershake_rows(periods)
+        if np.any(cybershake):
+            # CyberShake basin coefficients
+            c_cy = self._coeff_rows(self.COEFF_CYBERSHAKE)
+            with np.errstate(invalid="ignore"):
+                f_dz1_cy = np.where(
+                    delta_depth_1_0 <= c_cy.dz1_max,
+                    c_cy.f_6 * delta_depth_1_0,
+                    c_cy.f_7,
+                )
+            f_dz1 = np.where(cybershake, f_dz1_cy + usgs.CYBERSHAKE_CONSTANT, f_dz1)
+        # Basin term for periods of 0.65 s and longer
+        f_dz1 = np.where(periods >= 0.65, f_dz1, 0.0)
+        if self._basin:
+            f_dz1 = f_dz1 * usgs.basin_scale(periods, depth_1_0, *usgs.BASIN_Z1P0)
+        return f_dz1
 
     @classmethod
     def calc_site_term(
@@ -323,8 +455,13 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
         return cls._calc_site_term(cls.COEFF, pga_ref, v_s30, depth_1_0, region)
 
     @staticmethod
-    def _calc_site_term(c, pga_ref, v_s30, depth_1_0, region) -> ArrayLike:
-        """Calculate the site term for the periods in the coefficients `c`."""
+    def _calc_site_term(
+        c, pga_ref, v_s30, depth_1_0, region, basin: bool = True
+    ) -> ArrayLike:
+        """Calculate the site term for the periods in the coefficients `c`.
+
+        If `basin` is *False*, the basin term is not included.
+        """
         f_lin = c.c * np.log(np.minimum(v_s30, c.V_c) / c.V_ref)
 
         # Add the nonlinearity to the site term
@@ -333,6 +470,8 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
             - np.exp(c.f_5 * (760.0 - 360.0))
         )
         f_nl = c.f_1 + f_2 * np.log((pga_ref + c.f_3) / c.f_3)
+        if not basin:
+            return f_lin + f_nl
 
         # Compute the average from the Chiou and Youngs (2014)
         # model convert from m to km.
@@ -361,7 +500,7 @@ class BooreStewartSeyhanAtkinson2014(model.GroundMotionModel):
             natural log standard deviation
 
         """
-        c = self._coeff_rows(self.COEFF)
+        c = self._coeff_rows(self._coeff)
         s = self._scenario
         mag = model.as_column(s.mag)
 

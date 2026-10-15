@@ -100,7 +100,12 @@ def nshmp_subduction(model, event_types, **options):
     return factory
 
 
-def nga_west2_nshmp(model, **options):
+def nga_west2_nshmp(model, gmm):
+    """Factory of the nshmp-lib variant (Gmm id) of an NGA-West2 model."""
+    params = set(inspect.signature(model.__init__).parameters)
+    options = {k: v for k, v in model.GMM_IDS[gmm].items() if k in params}
+    values = {k: v for k, v in model.GMM_IDS[gmm].items() if k not in params}
+
     def factory(ims=None, n=300):
         rng = np.random.default_rng(0)
         dist_jb = rng.uniform(0.0, 200.0, n)
@@ -117,6 +122,7 @@ def nga_west2_nshmp(model, **options):
             v_s30=rng.uniform(180.0, 1300.0, n),
             depth_1_0=rng.choice([np.nan, 0.2, 0.6], n),
             depth_2_5=rng.choice([np.nan, 1.0, 4.0], n),
+            **values,
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -168,15 +174,15 @@ MODELS = {
         21,
     ),
     "ask14_nshmp": (
-        nga_west2_nshmp(pygmm.AbrahamsonSilvaKamai2014Nshmp, basin=True),
-        21,
+        nga_west2_nshmp(pygmm.AbrahamsonSilvaKamai2014, "ASK_14_BASIN"),
+        22,
     ),
     "bssa14_nshmp": (
-        nga_west2_nshmp(pygmm.BooreStewartSeyhanAtkinson2014Nshmp, basin=True),
-        21,
+        nga_west2_nshmp(pygmm.BooreStewartSeyhanAtkinson2014, "BSSA_14_BASIN"),
+        105,
     ),
-    "cb14_nshmp": (nga_west2_nshmp(pygmm.CampbellBozorgnia2014Nshmp, basin=True), 21),
-    "cy14_nshmp": (nga_west2_nshmp(pygmm.ChiouYoungs2014Nshmp, basin=True), 21),
+    "cb14_nshmp": (nga_west2_nshmp(pygmm.CampbellBozorgnia2014, "CB_14_BASIN"), 21),
+    "cy14_nshmp": (nga_west2_nshmp(pygmm.ChiouYoungs2014, "CY_14_BASIN"), 24),
 }
 
 

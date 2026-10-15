@@ -5,12 +5,13 @@ import numpy as np
 from .. import model
 from .._types import ArrayLike
 from ..registry import register
+from . import nshmp as usgs
 
 __author__ = "Albert Kottke"
 
 
 @register(tectonic="active_crustal")
-class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
+class AbrahamsonSilvaKamai2014(usgs.NshmpOptions, model.GroundMotionModel):
     """Abrahamson, Silva, and Kamai (2014, :cite:`abrahamson14`) model.
 
     This model was developed for active tectonic regions as part of the
@@ -18,15 +19,60 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
 
     The model is vectorized. Each scenario value (``mag``, ``dist_rup``,
     ``dist_jb``, ``dist_x``, ``dist_y0``, ``dist_crjb``, ``v_s30``,
-    ``depth_1_0``, ``depth_tor``, ``dip``, ``width``, ``mechanism``,
-    ``region``, ``vs_source``, ``is_aftershock``, and ``on_hanging_wall``) can
-    be a scalar or an array, and the arrays are broadcast against each other.
-    Values that are *None* are estimated as for a scalar scenario (``width``
-    from ``mag`` and ``dip``, and ``depth_tor`` from ``mag``). For a scalar
-    scenario, the response and standard deviation have one value per period,
-    as in other models. For arrays of N scenarios, they have shape
-    (N, periods), so, for example, ``pga`` has shape (N,) and ``spec_accels``
-    has shape (N, 22).
+    ``depth_1_0``, ``depth_tor``, ``depth_bor``, ``dip``, ``width``,
+    ``mechanism``, ``region``, ``vs_source``, ``is_aftershock``, and
+    ``on_hanging_wall``) can be a scalar or an array, and the arrays are
+    broadcast against each other. Values that are *None* are estimated as for
+    a scalar scenario (``width`` from ``mag`` and ``dip``, and ``depth_tor``
+    from ``mag``). For a scalar scenario, the response and standard deviation
+    have one value per period, as in other models. For arrays of N scenarios,
+    they have shape (N, periods), so, for example, ``pga`` has shape (N,) and
+    ``spec_accels`` has shape (N, 22).
+
+    The options select the variants of the model in the USGS nshmp-lib library
+    (``AbrahamsonEtAl_2014``, commit 44728a7d; see
+    :mod:`pygmm.ground_motion.nshmp`), and are off by default, which gives the
+    published model. With ``nshmp=True``, the model is computed as in
+    nshmp-lib, which:
+
+    - applies the hanging-wall term for sites with :math:`R_x \\ge 0` if
+      ``on_hanging_wall`` is not given (it is only non-zero for :math:`R_{JB}
+      <` 30 km, :math:`M >` 5.5, and :math:`Z_{tor} <` 10 km), with the
+      :math:`R_{JB}` taper (equation 15b, ``dist_y0`` is not used) and a dip
+      taper of 1.33333333 for dips of 30 degrees or less,
+    - computes ``width`` from the depth to the bottom of the rupture,
+      :math:`(Z_{bor} - Z_{tor}) / \\sin \\delta`, if ``width`` is *None* and
+      ``depth_bor`` is given,
+    - has no basin (soil depth) term if ``depth_1_0`` is *None* or NaN, and
+      interpolates the basin slope in :math:`V_{S30}` between 150, 250, 400,
+      700, and 1000 m/sec with linear extrapolation for :math:`V_{S30} <` 150
+      m/sec,
+    - uses :math:`V_1` of 800 m/sec for periods of 3 s and longer (the
+      published model uses the continuous :math:`V_1` of equation 9, 801.2
+      m/sec),
+    - uses the aleatory variability for an inferred :math:`V_{S30}` if
+      ``vs_source`` is not given,
+    - and treats an unspecified style of faulting (``mechanism`` of "U") as
+      strike-slip.
+
+    nshmp-lib only has the global model (no regional or aftershock terms), so
+    ``region`` and ``is_aftershock`` should not be given with ``nshmp=True``.
+    The nshmp-lib ``Gmm`` ids are (see :attr:`GMM_IDS`, whose values include the
+    ``vs_source`` scenario value):
+
+    ========================  =========================================
+    nshmp-lib ``Gmm``         Options
+    ========================  =========================================
+    ``ASK_14``                ``nshmp=True, epistemic=True``
+    ``ASK_14_BASE``           ``nshmp=True``
+    ``ASK_14_BASIN``          ``nshmp=True, epistemic=True, basin=True``
+    ``ASK_14_CYBERSHAKE``     ``nshmp=True, epistemic=True, basin=True,
+                              cybershake=True``
+    ``ASK_14_VS30_MEASURED``  ``nshmp=True`` (``vs_source="measured"``)
+    ``ASK_14_PRVI``           ``nshmp=True, prvi=True``
+    ========================  =========================================
+
+    The other ids have ``vs_source="inferred"``.
 
     Parameters
     ----------
@@ -38,6 +84,17 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         periods), and/or "psa_all" (all 22 periods). Computing only
         the needed intensity measures is much faster for large vectorized
         scenarios. If *None* (default), all intensity measures are computed.
+    nshmp : bool, optional
+        compute the model as in nshmp-lib (default *False*)
+    epistemic : bool, optional
+        include the USGS epistemic branches (default *False*)
+    basin : bool, optional
+        use the USGS deep basin model (default *False*)
+    cybershake : bool, optional
+        use the CyberShake basin terms (default *False*, requires
+        ``basin=True``)
+    prvi : bool, optional
+        use the PRVI coefficients (default *False*)
 
     Examples
     --------
@@ -53,6 +110,21 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
     >>> m.spec_accels.shape
     (2, 21)
 
+    The nshmp-lib ``ASK_14_BASIN`` variant, with the ``vs_source`` of the id
+    in the scenario:
+
+    >>> options = dict(pygmm.AbrahamsonSilvaKamai2014.GMM_IDS["ASK_14_BASIN"])
+    >>> s = pygmm.Scenario(
+    ...     mag=np.array([6.0, 7.0]), dist_rup=np.array([10.0, 50.0]),
+    ...     dist_jb=np.array([8.0, 48.0]), dist_x=np.array([8.0, -48.0]),
+    ...     dip=60.0, depth_tor=2.0, depth_bor=15.0, mechanism="RS",
+    ...     v_s30=400.0, depth_1_0=np.array([np.nan, 0.6]),
+    ...     vs_source=options.pop("vs_source"))
+    >>> m = pygmm.AbrahamsonSilvaKamai2014(s, **options)
+    >>> m.nshmp, m.epistemic, m.basin
+    (True, True, True)
+    >>> [w for w, _, _ in m.ln_branches("pga")]
+    [0.185, 0.63, 0.185]
     """
 
     NAME = "Abrahamson, Silva, & Kamai (2014)"
@@ -66,6 +138,31 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
 
     PERIODS = COEFF["period"]
 
+    #: nshmp-lib PRVI coefficients (NaN at 6 s)
+    COEFF_PRVI = usgs.load_coeffs("abrahamson_silva_kamai_2014-prvi.csv", PERIODS)
+    #: nshmp-lib CyberShake basin coefficients (NaN at 6 s)
+    COEFF_CYBERSHAKE = usgs.load_coeffs(
+        "abrahamson_silva_kamai_2014-cybershake.csv", PERIODS
+    )
+
+    #: Model options and scenario values of the nshmp-lib ``Gmm`` ids
+    GMM_IDS = {
+        "ASK_14": dict(nshmp=True, epistemic=True, vs_source="inferred"),
+        "ASK_14_BASE": dict(nshmp=True, vs_source="inferred"),
+        "ASK_14_BASIN": dict(
+            nshmp=True, epistemic=True, basin=True, vs_source="inferred"
+        ),
+        "ASK_14_CYBERSHAKE": dict(
+            nshmp=True,
+            epistemic=True,
+            basin=True,
+            cybershake=True,
+            vs_source="inferred",
+        ),
+        "ASK_14_VS30_MEASURED": dict(nshmp=True, vs_source="measured"),
+        "ASK_14_PRVI": dict(nshmp=True, prvi=True, vs_source="inferred"),
+    }
+
     INDICES_PSA = np.arange(22)
     INDEX_PGA = -2
     INDEX_PGV = -1
@@ -77,6 +174,7 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         model.NumericParameter("v_s30", True, 180, 1000),
         model.NumericParameter("depth_1_0", False),
         model.NumericParameter("depth_tor", False),
+        model.NumericParameter("depth_bor", False),
         model.NumericParameter("dip", True),
         model.NumericParameter("dist_crjb", False, default=15),
         model.NumericParameter("dist_x", False),
@@ -98,15 +196,41 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
 
     def _check_inputs(self) -> None:
         """Check the inputs."""
-        super()._check_inputs()
         s = self._scenario
-        if s["width"] is None:
-            s["width"] = self.calc_width(s.mag, s.dip)
-
+        if self._nshmp:
+            # nshmp-lib defaults
+            if s["mechanism"] is not None:
+                # No style of faulting term for an unspecified mechanism
+                mechanism = np.asarray(s["mechanism"])
+                s["mechanism"] = np.where(
+                    model.equals(mechanism, "U"), "SS", mechanism
+                )[()]
+            if s["on_hanging_wall"] is None and s["dist_x"] is not None:
+                s["on_hanging_wall"] = (np.asarray(s["dist_x"]) >= 0)[()]
+            if s["vs_source"] is None:
+                s["vs_source"] = "inferred"
+        super()._check_inputs()
         if s["depth_tor"] is None:
             s["depth_tor"] = self.calc_depth_tor(s.mag)
 
-    def __init__(self, scenario: model.Scenario, ims=None):
+        if s["width"] is None:
+            if self._nshmp and s["depth_bor"] is not None:
+                s["width"] = (
+                    np.asarray(s.depth_bor) - np.asarray(s.depth_tor)
+                ) / np.sin(np.radians(s.dip))
+            else:
+                s["width"] = self.calc_width(s.mag, s.dip)
+
+    def __init__(
+        self,
+        scenario: model.Scenario,
+        ims=None,
+        nshmp: bool = False,
+        epistemic: bool = False,
+        basin: bool = False,
+        cybershake: bool = False,
+        prvi: bool = False,
+    ):
         """Initialize the model.
 
         Args:
@@ -114,9 +238,12 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
             ims (str or sequence of str, optional): intensity measures to
                 compute. If *None* (default), all intensity measures are
                 computed.
+            nshmp, epistemic, basin, cybershake, prvi (bool, optional): the
+                nshmp-lib options (see :mod:`pygmm.ground_motion.nshmp`).
         """
+        self._set_options(nshmp, epistemic, basin, cybershake, prvi)
         super().__init__(scenario, ims)
-        c = self._coeff_rows(self.COEFF)
+        c = self._coeff_rows(self._options_coeff(self.COEFF))
         # The source and path terms do not depend on the site condition, so
         # they are shared by the reference and site responses
         ln_resp_source = self._calc_ln_resp_source(c)
@@ -132,6 +259,15 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         shape = np.broadcast_shapes(self._ln_resp.shape, self._ln_std.shape)
         if self._ln_resp.shape != shape:
             self._ln_resp = np.broadcast_to(self._ln_resp, shape).copy()
+        if self._epistemic:
+            self._ln_resp, self._branches = usgs.epistemic_branches(
+                self._ln_resp,
+                self._ln_std,
+                model.as_column(self._scenario.mag),
+                model.as_column(self._scenario.dist_jb),
+            )
+        if self._nshmp or self._epistemic:
+            self._ln_resp, self._ln_std = usgs.broadcast(self._ln_resp, self._ln_std)
 
     def _calc_ln_resp_source(self, c) -> np.ndarray:
         """Calculate the terms of the response that do not depend on the site.
@@ -166,8 +302,10 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         else:
             f4 = 0.0
 
-        # Depth to top of rupture term
-        f6 = c.a15 * np.clip(model.as_column(s.depth_tor) / 20, 0, 1)
+        # Depth to top of rupture term. nshmp-lib does not limit negative depths.
+        f6 = c.a15 * np.clip(
+            model.as_column(s.depth_tor) / 20, None if self._nshmp else 0, 1
+        )
         # Style of faulting. Strike-slip earthquakes have no style of faulting
         # term.
         taper = np.clip(mag - 4, 0, 1)
@@ -214,13 +352,19 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         dist_rup = model.as_column(s.dist_rup)
         region = model.as_column(s.region)
 
-        site_term = self._calc_site_term(
-            c,
-            resp_ref,
-            v_s30,
-            None if s.depth_1_0 is None else model.as_column(s.depth_1_0),
-            s.region if np.ndim(s.region) == 0 else region,
-        )
+        depth_1_0 = None if s.depth_1_0 is None else model.as_column(s.depth_1_0)
+        region_ = s.region if np.ndim(s.region) == 0 else region
+        if not (self._nshmp or self._basin or self._cybershake):
+            site_term = self._calc_site_term(c, resp_ref, v_s30, depth_1_0, region_)
+        else:
+            # nshmp-lib site term. The reference response (with a scalar
+            # resp_ref of NaN) has no basin term.
+            site_term = self._calc_f5(c, resp_ref, v_s30, self._nshmp)
+            is_ref = np.ndim(resp_ref) == 0 and np.isnan(resp_ref)
+            if depth_1_0 is not None and not is_ref:
+                site_term = site_term + self._calc_basin_term(
+                    c, v_s30, depth_1_0, region_
+                )
 
         # Regional terms, which are only computed for the regions in the
         # scenarios. Other regions have no regional term.
@@ -228,7 +372,7 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         choices = []
         is_taiwan = model.equals(region, "taiwan")
         if np.any(is_taiwan):
-            vs_ratio = np.minimum(v_s30, self._calc_v_1(c)) / c.v_lin
+            vs_ratio = np.minimum(v_s30, self._calc_v_1(c, self._nshmp)) / c.v_lin
             conds.append(is_taiwan)
             choices.append(c.a31 * np.log(vs_ratio) + c.a25 * dist_rup)
         is_china = model.equals(region, "china")
@@ -284,9 +428,26 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
     @classmethod
     def _calc_site_term(cls, c, resp_ref, v_s30, depth_1_0, region) -> np.ndarray:
         """Calculate the site term for the periods in the coefficients `c`."""
-        vs_ratio = np.minimum(v_s30, cls._calc_v_1(c)) / c.v_lin
+        f5 = cls._calc_f5(c, resp_ref, v_s30)
+
+        # Basin term
+        if depth_1_0 is None or np.all(v_s30 == cls.V_REF):
+            # No basin response
+            f10 = 0.0
+        else:
+            # No basin response at the reference velocity
+            f10 = np.where(
+                v_s30 == cls.V_REF, 0.0, cls._calc_f10(c, v_s30, depth_1_0, region)
+            )
+
+        return f5 + f10
+
+    @classmethod
+    def _calc_f5(cls, c, resp_ref, v_s30, nshmp: bool = False) -> np.ndarray:
+        """Calculate the site response term (f5)."""
+        vs_ratio = np.minimum(v_s30, cls._calc_v_1(c, nshmp)) / c.v_lin
         # Linear site model, or nonlinear model for velocities less than v_lin
-        f5 = np.where(
+        return np.where(
             vs_ratio < 1,
             c.a10 * np.log(vs_ratio)
             - c.b * np.log(resp_ref + c.c)
@@ -294,30 +455,53 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
             (c.a10 + c.b * c.n) * np.log(vs_ratio),
         )
 
-        # Basin term
-        if depth_1_0 is None or np.all(v_s30 == cls.V_REF):
-            # No basin response
-            f10 = 0.0
-        else:
-            # Ratio between site depth_1_0 and model center
-            ln_depth_ratio = np.log(
-                (depth_1_0 + 0.01) / (cls.calc_depth_1_0(v_s30, region) + 0.01)
-            )
-            slope = cls._interp_coeffs(
-                [150, 250, 400, 700], [c.a43, c.a44, c.a45, c.a46], v_s30
-            )
-            # No basin response at the reference velocity
-            f10 = np.where(v_s30 == cls.V_REF, 0.0, slope * ln_depth_ratio)
+    @classmethod
+    def _calc_f10(cls, c, v_s30, depth_1_0, region, nshmp: bool = False) -> np.ndarray:
+        """Calculate the basin (soil depth) term (f10)."""
+        # Ratio between site depth_1_0 and model center
+        ln_depth_ratio = np.log(
+            (depth_1_0 + 0.01) / (cls.calc_depth_1_0(v_s30, region) + 0.01)
+        )
+        # nshmp-lib extrapolates the slope below 150 m/sec
+        slope = cls._interp_coeffs(
+            [150, 250, 400, 700], [c.a43, c.a44, c.a45, c.a46], v_s30, nshmp
+        )
+        return slope * ln_depth_ratio
 
-        return f5 + f10
+    def _calc_basin_term(self, c, v_s30, depth_1_0, region) -> np.ndarray:
+        """Basin term with the nshmp-lib options."""
+        periods = c.period
+        cybershake = self._cybershake_rows(periods)
+        if np.any(cybershake):
+            # CyberShake basin slopes
+            c_cy = self._coeff_rows(self.COEFF_CYBERSHAKE)
+            c = c.copy()
+            for name in ["a44", "a45"]:
+                c[name] = np.where(cybershake, c_cy[name], c[name])
+        f10 = self._calc_f10(c, v_s30, depth_1_0, region, self._nshmp)
+        f10 = np.where(cybershake, f10 + usgs.CYBERSHAKE_CONSTANT, f10)
+        if self._nshmp:
+            # No basin term for NaN depths
+            f10 = np.where(np.isnan(depth_1_0), 0.0, f10)
+        if self._basin:
+            f10 = f10 * usgs.basin_scale(periods, depth_1_0, *usgs.BASIN_Z1P0)
+        return f10
 
     @staticmethod
-    def _calc_v_1(c) -> np.ndarray:
-        """Calculate the period dependent limiting velocity :math:`V_1` (m/s)."""
-        return np.exp(-0.35 * np.log(np.clip(c.period, 0.5, 3) / 0.5) + np.log(1500))
+    def _calc_v_1(c, nshmp: bool = False) -> np.ndarray:
+        """Calculate the period dependent limiting velocity :math:`V_1` (m/s).
+
+        nshmp-lib uses 800 m/sec for periods of 3 s and longer.
+        """
+        v_1 = np.exp(-0.35 * np.log(np.clip(c.period, 0.5, 3) / 0.5) + np.log(1500))
+        if nshmp:
+            v_1 = np.where(c.period >= 3.0, 800.0, v_1)
+        return v_1
 
     @staticmethod
-    def _interp_coeffs(xp: ArrayLike, fps: list, x: ArrayLike) -> np.ndarray:
+    def _interp_coeffs(
+        xp: ArrayLike, fps: list, x: ArrayLike, extrapolate: bool = False
+    ) -> np.ndarray:
         """Linearly interpolate coefficients with respect to a scenario value.
 
         This gives the same values as :func:`scipy.interpolate.interp1d` with the
@@ -333,6 +517,9 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         x : float or array_like
             scenario values, with a trailing axis for arrays (see
             :func:`pygmm.model.as_column`)
+        extrapolate : bool, optional
+            if *True*, the first interval is linearly extrapolated below
+            `xp` (default *False*)
 
         Returns
         -------
@@ -348,6 +535,8 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         x_lo = xp[lo]
         slope = (np.choose(hi, fps) - fp_lo) / (xp[hi] - x_lo)
         values = slope * (x - x_lo) + fp_lo
+        if extrapolate:
+            return np.where(x > xp[-1], fps[-1], values)
         return np.where(x < xp[0], fps[0], np.where(x > xp[-1], fps[-1], values))
 
     def _calc_ln_std(
@@ -404,7 +593,13 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         )
         deriv = np.where(v_s30 >= c.v_lin, 0.0, deriv)
         tau = tau_b * (1 + deriv)
-        phi = np.sqrt(phi_b**2 * (1 + deriv) ** 2 + phi_amp**2)
+        if self._nshmp:
+            # nshmp-lib does not limit phi_b**2 to positive values (for a
+            # measured v_s30 at long periods)
+            phi_b_sq = phi_al**2 - phi_amp**2
+            phi = np.sqrt(phi_b_sq * (1 + deriv) ** 2 + phi_amp**2)
+        else:
+            phi = np.sqrt(phi_b**2 * (1 + deriv) ** 2 + phi_amp**2)
 
         ln_std = np.sqrt(phi**2 + tau**2)
         return ln_std, tau, phi
@@ -534,7 +729,10 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
         dip = model.as_column(s.dip)
         dist_x = model.as_column(s.dist_x)
 
-        t1 = np.minimum(90 - dip, 60) / 45
+        if self._nshmp:
+            t1 = np.where(dip > 30.0, (90.0 - dip) / 45, 1.33333333)
+        else:
+            t1 = np.minimum(90 - dip, 60) / 45
         # Constant from page 1041
         a2hw = 0.2
         t2 = np.select(
@@ -560,7 +758,7 @@ class AbrahamsonSilvaKamai2014(model.GroundMotionModel):
 
         t4 = np.clip(1 - model.as_column(s.depth_tor) ** 2 / 100, 0, 1)
 
-        if s.dist_y0 is None:
+        if s.dist_y0 is None or self._nshmp:
             t5 = np.clip(1 - model.as_column(s.dist_jb) / 30, 0, 1)
         else:
             dist_y1 = dist_x * np.tan(np.radians(20))

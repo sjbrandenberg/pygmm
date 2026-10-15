@@ -204,10 +204,10 @@ pygmm.ground\_motion.nga\_east module
    :show-inheritance:
    :undoc-members:
 
-pygmm.ground\_motion.nga\_west2\_nshmp module
----------------------------------------------
+pygmm.ground\_motion.nshmp module
+---------------------------------
 
-.. automodule:: pygmm.ground_motion.nga_west2_nshmp
+.. automodule:: pygmm.ground_motion.nshmp
    :members:
    :show-inheritance:
    :undoc-members:
