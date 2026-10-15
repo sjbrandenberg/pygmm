@@ -9,8 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pygmm.ground_motion.nga_east_usgs_2017 import NgaEastUsgs2017, _load_tables
 from pygmm.model import Scenario
-from pygmm.nga_east_usgs_2017 import NgaEastUsgs2017, _load_tables
 
 PERIODS = [0.05, 0.3, 1.0, 2.5]
 

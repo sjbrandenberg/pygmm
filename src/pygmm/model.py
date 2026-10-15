@@ -3,12 +3,15 @@
 import collections
 import os
 import warnings
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from scipy.interpolate import interp1d
 
-from .types import ArrayLike
+from ._types import ArrayLike, InterpKind
+from .contracts import ResponseSpectrum
 
 
 class Scenario(collections.UserDict):
@@ -146,7 +149,7 @@ class Scenario(collections.UserDict):
     def _check_keys(self, keys):
         for k in keys:
             if k not in self.KNOWN_KEYS:
-                raise Warning("%s is not a recognized scenario key!" % k)
+                raise Warning(f"{k} is not a recognized scenario key!")
 
 
 class Model:
@@ -155,9 +158,9 @@ class Model:
     #: Short name of the model
     ABBREV = ""
     #: Limits of model applicability
-    LIMITS = dict()
+    LIMITS: dict = dict()
     #: Model parameters
-    PARAMS = []
+    PARAMS: list = []
 
     def __init__(self, *args, **kwargs):
         """Initialize the model."""
@@ -226,43 +229,46 @@ class GroundMotionModel(Model):
     )
 
     #: Indices for the spectral accelerations
-    INDICES_PSA = np.array([])
+    INDICES_PSA: np.ndarray = np.array([])
     #: Indices of the periods
-    PERIODS = np.array([])
+    PERIODS: np.ndarray = np.array([])
     #: Index of the peak ground acceleration
-    INDEX_PGA = None
+    INDEX_PGA: int | None = None
     #: Index of the peak ground velocity
-    INDEX_PGV = None
+    INDEX_PGV: int | None = None
     #: Index of the peak ground displacement
-    INDEX_PGD = None
+    INDEX_PGD: int | None = None
     #: Scale factor to apply to get PGV in cm/sec
     PGV_SCALE = 1.0
     #: Scale factor to apply to get PGD in cm
     PGD_SCALE = 1.0
 
-    def __init__(self, scenario: Scenario, ims: Optional[Sequence[str]] = None):
+    def __init__(self, scenario: Scenario, ims: Sequence[str] | None = None):
         """Initialize the model."""
         super().__init__(scenario)
 
-        self._ln_resp = None
-        self._ln_std = None
+        self._ln_resp: np.ndarray | None = None
+        self._ln_std: np.ndarray | None = None
         # Branches of the logic tree of the ground motion distribution (e.g., the
         # USGS epistemic branches of the median) as a list of (weight, ln_resp,
         # ln_std), or None for a single branch (_ln_resp and _ln_std)
-        self._branches = None
-        self._ims = None if ims is None else self._check_ims(ims)
+        self._branches: list | None = None
+        self._ims: tuple[str, ...] | None = None
         # Coefficient rows (periods) that are computed, or None for all rows
-        self._indices = None if ims is None else self._ims_indices(self._ims)
+        self._indices: np.ndarray | None = None
         # Coefficient rows of the computed spectral accelerations
+        self._psa_indices: np.ndarray
         if ims is None:
             self._psa_indices = np.asarray(self.INDICES_PSA)
         else:
+            self._ims = self._check_ims(ims)
+            self._indices = self._ims_indices(self._ims)
             psa = [im for im in self._ims if im.startswith("psa_")]
             self._psa_indices = (
                 self._ims_indices(psa) if psa else np.array([], dtype=int)
             )
 
-    def _check_ims(self, ims) -> tuple:
+    def _check_ims(self, ims: str | Sequence[str]) -> tuple[str, ...]:
         """Check the requested intensity measures."""
         ims = (ims,) if isinstance(ims, str) else tuple(ims)
         if not ims:
@@ -365,15 +371,17 @@ class GroundMotionModel(Model):
         return period
 
     @property
-    def psa_ims(self) -> List[str]:
+    def psa_ims(self) -> list[str]:
         """Names of the computed spectral accelerations, e.g., "psa_1p000"."""
         return [self.psa_name(p) for p in self.periods]
 
-    def _coeff_rows(self, values: ArrayLike) -> np.ndarray:
+    def _coeff_rows(self, values: Any) -> Any:
         """Select the computed coefficient rows (periods) from per-period values.
 
         Models that support ``ims`` use this on coefficients and periods so that
-        only the requested intensity measures are computed.
+        only the requested intensity measures are computed. The result has the
+        type of `values` (typed as ``Any``), so that the fields of coefficient
+        record arrays (e.g., ``c.e_1``) are visible to type checkers.
         """
         if self._indices is None:
             return values
@@ -383,7 +391,7 @@ class GroundMotionModel(Model):
         # attribute access (e.g., ``c.e_1``)
         return values[self._indices]
 
-    def _take(self, values: ArrayLike, index, im: str) -> np.ndarray:
+    def _take(self, values: np.ndarray, index, im: str) -> np.ndarray:
         """Select periods from computed values by coefficient row."""
         if self._indices is None:
             return take_periods(values, index)
@@ -392,12 +400,12 @@ class GroundMotionModel(Model):
         if not np.all(self._indices[cols_clipped] == index):
             raise ValueError(
                 f"{im} was not computed. The model was created with "
-                f"ims={list(self._ims)}; include {im!r} in ims."
+                f"ims={list(self._ims or ())}; include {im!r} in ims."
             )
         return take_periods(values, cols)
 
     def interp_ln_spec_accels(
-        self, periods: ArrayLike, kind: Optional[str] = "linear"
+        self, periods: ArrayLike, kind: InterpKind = "linear"
     ) -> np.ndarray:
         """Interpolate the spectral acceleration.
 
@@ -421,7 +429,7 @@ class GroundMotionModel(Model):
         """
         return interp1d(
             np.log(self.periods),
-            self._take_psa(self._ln_resp),
+            self._take_psa(self._resp_vector),
             kind=kind,
             copy=False,
             bounds_error=False,
@@ -429,7 +437,7 @@ class GroundMotionModel(Model):
         )(np.log(periods))
 
     def interp_spec_accels(
-        self, periods: ArrayLike, kind: Optional[None] = "linear"
+        self, periods: ArrayLike, kind: InterpKind = "linear"
     ) -> np.ndarray:
         """Interpolate the spectral acceleration.
 
@@ -454,7 +462,7 @@ class GroundMotionModel(Model):
         return np.exp(self.interp_ln_spec_accels(periods, kind))
 
     def interp_ln_stds(
-        self, periods: ArrayLike, kind: Optional[None] = "linear"
+        self, periods: ArrayLike, kind: InterpKind = "linear"
     ) -> np.ndarray:
         r"""Interpolate the logarithmic standard deviation.
 
@@ -481,7 +489,7 @@ class GroundMotionModel(Model):
         else:
             return interp1d(
                 np.log(self.periods),
-                self._take_psa(self._ln_std),
+                self._take_psa(self._std_vector),
                 kind=kind,
                 copy=False,
                 bounds_error=False,
@@ -501,7 +509,33 @@ class GroundMotionModel(Model):
     @property
     def spec_accels(self) -> np.ndarray:
         """Pseudo-spectral accelerations computed by the model (g)."""
-        return np.exp(self._take_psa(self._ln_resp))
+        return np.exp(self._take_psa(self._resp_vector))
+
+    def response_spectrum(self, damping: float = 0.05) -> ResponseSpectrum:
+        """Return the computed PSA as a response spectrum.
+
+        The result is duck-typed for cross-package interop, matching
+        :class:`~pygmm.contracts.ResponseSpectrum`, so it can be handed to
+        consumers such as ``pyrvt.motions.CompatibleRvtMotion`` without those
+        packages depending on pygmm.
+
+        Parameters
+        ----------
+        damping : float, optional
+            Fractional damping of the oscillator. Ground motion models are
+            published for 5% damping, which is the default.
+
+        Returns
+        -------
+        response_spectrum : :class:`~pygmm.contracts.ResponseSpectrum`
+            Periods, spectral accelerations, and damping.
+
+        """
+        return ResponseSpectrum(
+            periods=self.periods,
+            spec_accels=self.spec_accels,
+            damping=damping,
+        )
 
     @property
     def ln_stds(self) -> np.ndarray:
@@ -509,10 +543,10 @@ class GroundMotionModel(Model):
         if self._ln_std is None:
             raise NotImplementedError
         else:
-            return self._take_psa(self._ln_std)
+            return self._take_psa(self._std_vector)
 
     @property
-    def pga(self) -> float:
+    def pga(self) -> float | np.ndarray:
         """Peak ground acceleration (PGA) computed by the model (g)."""
         if self.INDEX_PGA is None:
             raise NotImplementedError
@@ -520,7 +554,7 @@ class GroundMotionModel(Model):
             return self._resp(self.INDEX_PGA, "pga")
 
     @property
-    def ln_pga(self) -> float:
+    def ln_pga(self) -> float | np.ndarray:
         """Natural logarithm of the peak ground acceleration (PGA) in g.
 
         Equal to ``np.log(pga)``, but without the exponential and logarithm, which
@@ -529,18 +563,18 @@ class GroundMotionModel(Model):
         if self.INDEX_PGA is None:
             raise NotImplementedError
         else:
-            return self._take(self._ln_resp, self.INDEX_PGA, "pga")
+            return self._take(self._resp_vector, self.INDEX_PGA, "pga")
 
     @property
-    def ln_std_pga(self) -> float:
+    def ln_std_pga(self) -> float | np.ndarray:
         """Peak ground accelaration log-standard deviation."""
         if self.INDEX_PGA is None:
             raise NotImplementedError
         else:
-            return self._take(self._ln_std, self.INDEX_PGA, "pga")
+            return self._take(self._std_vector, self.INDEX_PGA, "pga")
 
     @property
-    def pgv(self) -> float:
+    def pgv(self) -> float | np.ndarray:
         """Peak ground velocity (PGV) computed by the model (cm/sec)."""
         if self.INDEX_PGV is None:
             raise NotImplementedError
@@ -548,15 +582,15 @@ class GroundMotionModel(Model):
             return self._resp(self.INDEX_PGV, "pgv") * self.PGV_SCALE
 
     @property
-    def ln_std_pgv(self) -> float:
+    def ln_std_pgv(self) -> float | np.ndarray:
         """Peak ground velocity log-standard deviation."""
         if self.INDEX_PGV is None:
             raise NotImplementedError
         else:
-            return self._take(self._ln_std, self.INDEX_PGV, "pgv")
+            return self._take(self._std_vector, self.INDEX_PGV, "pgv")
 
     @property
-    def pgd(self) -> float:
+    def pgd(self) -> float | np.ndarray:
         """Peak ground displacement (PGD) computed by the model (cm)."""
         if self.INDEX_PGD is None:
             raise NotImplementedError
@@ -564,17 +598,17 @@ class GroundMotionModel(Model):
             return self._resp(self.INDEX_PGD, "pgd") * self.PGD_SCALE
 
     @property
-    def ln_std_pgd(self) -> float:
+    def ln_std_pgd(self) -> float | np.ndarray:
         """Peak ground displacement log-standard deviation."""
         if self.INDEX_PGD is None:
             raise NotImplementedError
         else:
-            return self._take(self._ln_std, self.INDEX_PGD, "pgd")
+            return self._take(self._std_vector, self.INDEX_PGD, "pgd")
 
     def _branch_list(self) -> list:
         """Branches as (weight, ln_resp, ln_std) of the computed coefficient rows."""
         if self._branches is None:
-            return [(1.0, self._ln_resp, self._ln_std)]
+            return [(1.0, self._resp_vector, self._ln_std)]
         return list(self._branches)
 
     def ln_branches(self, im: str = "pga") -> list:
@@ -603,8 +637,9 @@ class GroundMotionModel(Model):
             are the natural logs of the median (in the units of ``ln_pga`` etc.,
             i.e., without the PGV and PGD scale factors) and the standard
             deviations. Models whose branch weights depend on the period (e.g.,
-            :class:`~pygmm.nga_east.NgaEast`) store them per computed period, and
-            the weights of "psa" are then arrays with one value per period
+            :class:`~pygmm.ground_motion.nga_east.NgaEast`) store them per computed
+            period, and the weights of "psa" are then arrays with one value per
+            period
         """
         if im == "psa":
             take = self._take_psa
@@ -643,14 +678,33 @@ class GroundMotionModel(Model):
                 "'psa_ngawest2_21', or a period such as 'psa_1p000' in ims."
             )
 
-    def _take_psa(self, values: ArrayLike) -> np.ndarray:
+    def _take_psa(self, values: np.ndarray) -> np.ndarray:
         """Select the computed spectral accelerations from computed values."""
         self._check_psa_computed()
         return self._take(values, self._psa_indices, "psa")
 
+    @property
+    def _resp_vector(self) -> np.ndarray:
+        """The computed response vector, or a clear error if there isn't one."""
+        if self._ln_resp is None:
+            raise RuntimeError(
+                f"{type(self).__name__} has not computed a response vector; "
+                "its __init__ must assign self._ln_resp."
+            )
+        return self._ln_resp
+
+    @property
+    def _std_vector(self) -> np.ndarray:
+        """The computed standard deviations, or a clear error if absent."""
+        if self._ln_std is None:
+            raise RuntimeError(
+                f"{type(self).__name__} has not computed standard deviations; "
+                "its __init__ must assign self._ln_std."
+            )
+        return self._ln_std
+
     def _resp(self, index, im: str = "psa") -> np.ndarray:
-        if index is not None:
-            return np.exp(self._take(self._ln_resp, index, im))
+        return np.exp(self._take(self._resp_vector, index, im))
 
 
 class Parameter:
@@ -717,9 +771,9 @@ class NumericParameter(Parameter):
         self,
         name: str,
         required: bool = False,
-        min_: Optional[float] = None,
-        max_: Optional[float] = None,
-        default: Optional[float] = None,
+        min_: float | None = None,
+        max_: float | None = None,
+        default: float | None = None,
     ):
         """Initialize parameter."""
         super().__init__(name, required, default)
@@ -727,20 +781,21 @@ class NumericParameter(Parameter):
         self._max = max_
 
     @property
-    def min(self) -> float:
-        """Minimum value."""
+    def min(self) -> float | None:
+        """Minimum value, or None if unbounded below."""
         return self._min
 
     @property
-    def max(self) -> float:
-        """Maximum value."""
+    def max(self) -> float | None:
+        """Maximum value, or None if unbounded above."""
         return self._max
 
     def check(self, value) -> float:
         """Check the value against the limits.
 
-        The value can be a scalar or an array of values for a vectorized scenario. For an
-        array, a single warning is issued for the values outside of the limits.
+        The value can be a scalar or an array of values for a vectorized scenario.
+        For an array, a single warning is issued for the values outside of the
+        limits.
         """
         value = super().check(value)
         if value is not None and np.ndim(value) > 0:
@@ -802,23 +857,24 @@ class CategoricalParameter(Parameter):
         self,
         name: str,
         required: bool = False,
-        options: Optional[List[str]] = None,
-        default: Optional[str] = None,
+        options: list[str] | None = None,
+        default: str | None = None,
     ):
         """Initialize parameter."""
         super().__init__(name, required, default)
         self._options = options or []
 
     @property
-    def options(self) -> List[str]:
+    def options(self) -> list[str]:
         """Possible options."""
         return self._options
 
     def check(self, value) -> str:
         """Check the value against the limits.
 
-        The value can be a single option or an array of options for a vectorized scenario.
-        For an array, entries that are not one of the options are replaced with the default.
+        The value can be a single option or an array of options for a vectorized
+        scenario. For an array, entries that are not one of the options are
+        replaced with the default.
         """
         value = super().check(value)
         if np.ndim(value) > 0:
@@ -830,8 +886,9 @@ class CategoricalParameter(Parameter):
                 invalid &= ~equals(value, option)
             if np.any(invalid):
                 warnings.warn(
-                    f"{self.name} has {np.count_nonzero(invalid)} of {value.size} values "
-                    "that are not one of the options. The following options are possible: "
+                    f"{self.name} has {np.count_nonzero(invalid)} of {value.size} "
+                    "values that are not one of the options. The following options "
+                    "are possible: "
                     f"{', '.join([str(o) for o in self._options])}",
                     UserWarning,
                     stacklevel=2,
@@ -900,11 +957,12 @@ def symmetric_branches(
     ]
 
 
-def take_periods(values: ArrayLike, index) -> np.ndarray:
+def take_periods(values: np.ndarray, index) -> np.ndarray:
     """Select periods from a response or standard deviation array.
 
-    A scalar scenario gives a 1-D array indexed by period. A vectorized scenario gives an
-    array with periods along the last axis, e.g., shape (N, periods) for N scenarios.
+    A scalar scenario gives a 1-D array indexed by period. A vectorized scenario
+    gives an array with periods along the last axis, e.g., shape (N, periods) for
+    N scenarios.
 
     Parameters
     ----------
@@ -923,7 +981,7 @@ def take_periods(values: ArrayLike, index) -> np.ndarray:
     return values[..., index]
 
 
-def equals(values: ArrayLike, option) -> np.ndarray:
+def equals(values: npt.ArrayLike, option) -> np.ndarray:
     """Element-wise comparison of scenario values with an option.
 
     Equivalent to ``np.asarray(values) == option``. Arrays of fixed-width strings
@@ -959,12 +1017,13 @@ def equals(values: ArrayLike, option) -> np.ndarray:
     return equal
 
 
-def as_column(value: ArrayLike) -> np.ndarray:
+def as_column(value: npt.ArrayLike) -> np.ndarray:
     """Add a trailing axis so scenario values broadcast against period coefficients.
 
-    Coefficient arrays have one value per period. A scenario value with shape (N,) becomes
-    shape (N, 1), so results have shape (N, periods). A scalar becomes shape (1,), which
-    broadcasts to shape (periods,), so scalar scenarios keep their 1-D results.
+    Coefficient arrays have one value per period. A scenario value with shape (N,)
+    becomes shape (N, 1), so results have shape (N, periods). A scalar becomes shape
+    (1,), which broadcasts to shape (periods,), so scalar scenarios keep their 1-D
+    results.
 
     Parameters
     ----------
@@ -977,6 +1036,24 @@ def as_column(value: ArrayLike) -> np.ndarray:
         value with a trailing axis of length one
     """
     return np.asarray(value)[..., np.newaxis]
+
+
+def as_scalar_or_array(value: npt.ArrayLike) -> float | np.ndarray:
+    """Return a float for a scalar scenario and an array for a vectorized one.
+
+    Parameters
+    ----------
+    value : array_like
+        scalar or array of values
+
+    Returns
+    -------
+    value : float or :class:`np.ndarray`
+        a float if `value` has no dimensions, otherwise an array
+    """
+    if np.ndim(value) == 0:
+        return float(np.asarray(value))
+    return np.asarray(value)
 
 
 def load_data_file(name, skip_header: int = 0) -> np.recarray:

@@ -2,7 +2,44 @@
 title: History
 ---
 
-# Unreleased
+# 0.9.0 (unreleased)
+- Changed: adopted [SPEC 0](https://scientific-python.org/specs/spec-0000/) for
+  version support -- Python minors from the last 36 months, core dependencies
+  from the last 24 months. **Minimum Python is now 3.12** (was 3.10), and
+  dependency lower bounds are declared explicitly: `matplotlib>=3.10`,
+  `numpy>=2.1`, `pandas>=2.3`, `pint>=0.25`, `scipy>=1.15`. CI now runs 3.12,
+  3.13 and 3.14. The dated drop schedule is in `pyproject.toml`.
+
+  The old `>=3.10` floor was already unmet in practice: numpy, scipy, pandas,
+  matplotlib and pint all require >=3.11, so a 3.10 install silently resolved
+  to a much older stack (pandas 2.3 rather than 3.0, numpy 2.2 rather than
+  2.5). That forced the lockfile to fork on `python_full_version < '3.11'` into 5 duplicated packages.
+
+- Added: Macedo, Abrahamson, & Liu (2021) conditional and scenario-based CAV models for shallow crustal settings
+- Added: Abrahamson, Shi, & Yang (2016) Ground-Motion Prediction Equations for {A}rias Intensity Consistent with the NGA-West2 Ground-Motion Models
+- Added: `pygmm.contracts` dataclasses (`FourierSpectrum`, `ResponseSpectrum`,
+  `NonlinearSoilCurves`, `VelocityProfile`) so downstream packages can interoperate
+  without depending on pygmm at runtime
+- Added: `pygmm.fourier_spectrum` with the source-theory and Stafford et al. (2022)
+  FAS models, moved out of pyRVT
+- Added: `pygmm.soil_curves` with the empirical nonlinear soil-curve models
+  (Darendeli, Menq, Wang, Alemu et al., Rollins et al., Kishida), moved out of pyStrata
+- Added: `kea16_profile()`, moved out of pyStrata
+- Added: `pygmm.registry` — `find_models()` and `get_model()` for capability-based
+  discovery, e.g. `find_models(provides="psa", tectonic="active_crustal")`
+- Added: producer protocols in `pygmm.contracts` (`SupportsResponseSpectrum`,
+  `SupportsFourierSpectrum`, `SupportsDuration`, `SupportsSoilCurves`), replacing
+  the seven `_base.py` abstract base classes — six of which never acquired a
+  subclass. Conformance is structural, matching how pyStrata and pyRVT already
+  consume pygmm.
+- Added: `duration_model()` on the five duration models and `fourier_spectrum()`
+  on the three FAS models, so they emit the corresponding contract
+- Added: `fourier_amps` on `BaylessAbrahamson2019`, which previously exposed only
+  `eas` and so could not be used with pyRVT despite living in `fourier_spectrum`
+- Added: `Duration.ln_std`, `Duration.plus_sigma` and `Duration.minus_sigma`. Two
+  conventions are carried because the models disagree: AS96/AS16/KS06 report a
+  lognormal standard error, while Pinilla-Ramos et al. apply sigma in a
+  transformed power space that is not symmetric in log space.
 - Added: the USGS nshmp-lib versions of the Atkinson and Macias (2009) interface model
   (`AtkinsonMacias2009`; `GMM_IDS`: `AM_09_INTERFACE`, `_BASIN`, `_BASIN_M9`, `_BASIN_SITE_FIX`,
   and `_BASIN_M9_SITE_FIX`) and the Zhao et al. (2006) interface and intraslab model
@@ -18,7 +55,7 @@ title: History
 - Added: the USGS nshmp-lib versions of the NGA-West2 models used by the NSHM:
   `AbrahamsonSilvaKamai2014Nshmp`, `BooreStewartSeyhanAtkinson2014Nshmp`,
   `CampbellBozorgnia2014Nshmp`, `ChiouYoungs2014Nshmp`, and `Idriss2014Nshmp` (module
-  `nga_west2_nshmp`), with the `epistemic` (USGS NGA-West2 epistemic branches, collapsed as in
+  `pygmm.ground_motion.nga_west2_nshmp`), with the `epistemic` (USGS NGA-West2 epistemic branches, collapsed as in
   nshmp-lib), `basin` (USGS deep basin scaling), `cybershake` (2023 NSHM CyberShake basin terms),
   `prvi` (2025 PRVI coefficients), and `vs30_measured` options that select the nshmp-lib `Gmm`
   variants (`GMM_IDS`: `ASK_14`, `_BASE`, `_BASIN`, `_CYBERSHAKE`, `_VS30_MEASURED`, `_PRVI`,
@@ -63,12 +100,30 @@ title: History
   (`event_type`). `epistemic=False` gives the central branch (the nshmp-haz `*_NO_EPI` variants).
   a14 for PGA is -0.223 (the 0.01 s value, as in OpenQuake) instead of -0.233 in nshmp-haz, which
   increases intraslab PGA by about 4 to 5% relative to nshmp-haz.
+- Added: `ln_pga` property, the natural logarithm of PGA, which avoids computing `np.log(pga)`.
+- Added: `ims` argument for all ground motion models (`GroundMotionModel` subclasses) to compute only
+  the requested intensity measures: "pga", "pgv", individual spectral periods such as "psa_1p000" (1.0 s),
+  "psa_ngawest2_21" (the 21 NGA-West2 comparison periods), and "psa_all" (all periods).
+  `periods` and `spec_accels` contain only the computed periods, and `psa_ims` gives their names.
+- Changed: models are organized into three packages, chosen by the independent
+  variable of what they predict — shear strain (`soil_curves`), frequency
+  (`fourier_spectrum`), or period / a scalar conditioned on a `Scenario`
+  (`ground_motion`). The top-level names are unchanged. This replaces the nine
+  category subpackages introduced earlier in this release, which were never
+  published.
+- Changed: `pint` is now a runtime dependency, and `soil_curves` is imported
+  lazily. `import pygmm` previously failed outright on any install without pint.
+- Changed: documentation reorganized to the Scientific Python layout
+- Changed: `response_spectrum()` and `duration_model()` accept models of
+  vectorized scenarios. For N scenarios, `ResponseSpectrum.spec_accels` has
+  shape (N, periods) and the `Duration` values have shape (N,), and `ims`
+  limits the response spectrum to the requested periods. The `Duration` values
+  are typed as a float or an array (`contracts.FloatOrArray`).
 - Changed: Idriss (2014) accepts arrays of scenario values (`mag`, `dist_rup`, `v_s30`, `mechanism`).
   Arrays of N scenarios give results with shape (N, periods), e.g., `pga` with shape (N,).
   Scalar scenarios give the same results as before.
 - Changed: `NumericParameter` and `CategoricalParameter` check arrays of values, with one warning
   for the values outside of the limits or options.
-- Added: `ln_pga` property, the natural logarithm of PGA, which avoids computing `np.log(pga)`.
 - Changed: Boore, Stewart, Seyhan, and Atkinson (2014) accepts arrays of scenario values (`mag`,
   `dist_jb`, `v_s30`, `depth_1_0`, `mechanism`, `region`) and the `ims` argument. Scalar scenarios give
   the same results as before.
@@ -98,20 +153,23 @@ title: History
   returns shape (N, len(nias)), or (N, len(stds), len(nias)) with `stds`. Scalar scenarios give the
   same results as before. `AfshariStewart2016.calc_depth_1_0` accepts arrays of `v_s30` and
   `region`.
-- Changed: `pinilla_ramos_et_al_2024.duration_model` uses all of the values of array inputs. It
+- Changed: `pygmm.ground_motion.pinilla_ramos_et_al_2024.duration_model` uses all of the values of array inputs. It
   previously used only the first value.
+- Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
+- Fixed: `AbrahamsonBhasin2020.__init__` ended with `return ln_mean, ln_std`, so
+  the model could not be constructed at all. Results are now exposed as
+  `pgv`/`ln_pgv`/`ln_std`/`tau`/`phi`, matching the other conditional models.
+- Fixed: `ChiouYoungs2014` no longer silently loses the `tau`/`phi` return added
+  in 0.6.6; a duplicate copy of the module had reverted it.
+- Fixed: `Stafford2017` referenced coefficient keys absent from its data file in
+  one of two duplicate copies. Nine modules existed in duplicate; the stale
+  copies are removed.
+- Fixed: parameter-limit warnings printed `{self.min}`/`{self.max}` literally.
 - Fixed: `AbrahamsonSilva1996.interp` and `calc_ln_dur_incr` no longer modify the `nias` array that
   is passed in, and accept integer values.
-- Added: `ims` argument for all ground motion models (`GroundMotionModel` subclasses) to compute only
-  the requested intensity measures: "pga", "pgv", individual spectral periods such as "psa_1p000" (1.0 s),
-  "psa_ngawest2_21" (the 21 NGA-West2 comparison periods), and "psa_all" (all periods).
-  `periods` and `spec_accels` contain only the computed periods, and `psa_ims` gives their names.
 - Fixed: Boore et al. (2014) used the global relation for the reference depth to 1.0 km/s for the
   Japan region. It now uses the Japan relation, which changes the basin term at periods of 0.65 s
   and longer for `region="japan"` with `depth_1_0` specified.
-- Changed: `ChiouYoungs2014.calc_depth_1_0` accepts an array of regions.
-- Fixed: the warnings for a scalar value outside of a parameter's recommended limits showed
-  "{self.min}" or "{self.max}" instead of the limit.
 - Fixed: Pezeshk et al. (2011) used the standard deviation in log10 units as a natural log standard
   deviation. It is now converted to natural log units (multiplied by ln(10)), as in OpenQuake,
   e.g., 0.58 instead of 0.25 for PGA at M6.
@@ -168,6 +226,15 @@ title: History
   applies to the differential in m (Table 2 lists c_5 in 1/km), consistent with the 200 m limit.
 - Fixed: Afshari and Stewart (2016) used b_1 = 6.188 instead of 6.579 for the D20-80 duration of
   reverse earthquakes (Table 1 of the paper).
+- Deprecated: `pygmm.models`. It mixed response-spectrum, duration, FAS and
+  correlation models with no way to tell them apart, and 7 of its 20 entries had
+  no `spec_accels`. Use `find_models()`.
+- Removed: `pygmm.contracts.FaultDisplacement`, `CptSounding`,
+  `SoilBehaviorProfile` and `LiquefactionTriggering`, which had no producer and
+  no consumer
+- Removed: `pygmm.tools` (an empty stub) and `pygmm.types` (renamed `_types`; it
+  shadowed the stdlib `types` module, breaking any interpreter started with the
+  package directory as the working directory)
 
 # 0.8.0 (2025-07-24)
 - Added: Pinilla-Ramos et al. (2023) model for duration of crustal earthquakes

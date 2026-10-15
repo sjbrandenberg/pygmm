@@ -289,7 +289,7 @@ def test_mismatched_lengths_raise(cls, uses_v_s30, im):
     "periods", [[-2.0, 0.0, 0.07, 1.1, 5.0, 6.0], [0.5], [0.025], [-1.0], [5.0]]
 )
 def test_interp_last_axis_matches_numpy(periods):
-    from pygmm.atkinson_boore_2006 import interp_last_axis, interp_rows
+    from pygmm.ground_motion.atkinson_boore_2006 import interp_last_axis, interp_rows
 
     rng = np.random.default_rng(1)
     xp = np.array([-1.0, 0.0101, 0.025, 0.1, 1.0, 5.0])

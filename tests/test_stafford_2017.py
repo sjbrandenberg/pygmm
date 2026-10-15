@@ -1,21 +1,26 @@
 #!/usr/bin/env python
-"""Test calculation of CY14 static methods."""
+"""Tests for Stafford (2017) inter-frequency correlation model."""
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from pygmm import Stafford2017
+
+from . import FPATH_DATA
+
+_df = pd.read_csv(FPATH_DATA / "PJS2017_cor_M4pt5_fmin0pt06.csv")
+_test_cases = list(zip(_df["Freq"], _df["Cor"]))
+F_REF = 0.06
 
 
-# FIXME
-# def test_cor():
-#     fname = os.path.join(
-#         os.path.dirname(__file__), "data", "PJS2017_cor_M4pt5_fmin0pt06.csv"
-#     )
-#     expected = pd.read_csv(fname, sep=",", header=0)
-
-#     cor = Stafford2017.cor(
-#         expected["Freq"], sigma_E=None, sigma_S=None, sigma_A=None, magnitude=4.5
-#     )
-#     np.testing.assert_allclose(
-#         cor,
-#         # Need to convert from m/sec to g
-#         expected["Cor"],
-#         rtol=0.05,
-#         err_msg="Correlations",
-#     )
+# FIXME: ~25/106 cases fail due to numerical errors in the implementation.
+# The between_event, within_event, and between_site correlation formulas
+# need to be reconciled against the paper (Stafford 2017, BSSA).
+@pytest.mark.xfail(
+    reason="Stafford 2017 implementation has known numerical errors (~25/106 cases)"
+)
+@pytest.mark.parametrize("freq,expected_cor", _test_cases)
+def test_correlation(freq, expected_cor):
+    cor = Stafford2017.cor(np.array([F_REF, freq]), mag=4.5)
+    np.testing.assert_allclose(cor[0, 1], expected_cor, rtol=0.05)

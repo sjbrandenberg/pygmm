@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pygmm.ground_motion.parker_et_al_2020 import ParkerEtAl2020 as PSBAH20
 from pygmm.model import Scenario
-from pygmm.parker_et_al_2020 import ParkerEtAl2020 as PSBAH20
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 COEFF_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "pygmm", "data")

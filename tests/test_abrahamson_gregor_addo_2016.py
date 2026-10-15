@@ -394,6 +394,4 @@ def test_adjust_c4_is_added_to_c4(monkeypatch):
     coeff = AGA16.COEFF.copy()
     coeff.c_4 = coeff.c_4 + 5.0
     monkeypatch.setattr(AGA16, "COEFF", coeff)
-    np.testing.assert_allclose(
-        adjusted._ln_resp, AGA16(s)._ln_resp, rtol=1e-12
-    )
+    np.testing.assert_allclose(adjusted._ln_resp, AGA16(s)._ln_resp, rtol=1e-12)

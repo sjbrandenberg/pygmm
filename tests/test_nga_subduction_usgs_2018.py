@@ -14,8 +14,10 @@ import warnings
 import numpy as np
 import pytest
 
+from pygmm.ground_motion.nga_subduction_usgs_2018 import (
+    NgaSubductionUsgs2018 as NGASUB18,
+)
 from pygmm.model import Scenario
-from pygmm.nga_subduction_usgs_2018 import NgaSubductionUsgs2018 as NGASUB18
 
 # The grid includes V_s30 values above the recommended limit (1000 m/sec)
 pytestmark = pytest.mark.filterwarnings("ignore:v_s30 .* recommended limit")

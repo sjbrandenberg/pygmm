@@ -20,15 +20,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pygmm.atkinson_macias_2009 import (
+from pygmm.ground_motion.atkinson_macias_2009 import (
     PERIODS_SA,
     conditional_pgv,
     deep_basin_term,
     interpolate_periods,
 )
-from pygmm.atkinson_macias_2009 import AtkinsonMacias2009 as AM09
+from pygmm.ground_motion.atkinson_macias_2009 import AtkinsonMacias2009 as AM09
+from pygmm.ground_motion.zhao_et_al_2006 import bchydro_2012
 from pygmm.model import Scenario
-from pygmm.zhao_et_al_2006 import bchydro_2012
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 COEFF_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "pygmm", "data")

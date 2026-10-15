@@ -457,4 +457,8 @@ def test_interp_coeffs_matches_interp1d():
     expected = interp1d(
         xp, np.c_[tuple(fps)], bounds_error=False, fill_value=(fps[0], fps[-1])
     )(x).T
-    np.testing.assert_array_equal(ASK14._interp_coeffs(xp, fps, x[:, None]), expected)
+    # Equal to within rounding: the arithmetic of interp1d differs by a unit in
+    # the last place between SciPy versions (e.g., 1.17 and 1.18)
+    np.testing.assert_allclose(
+        ASK14._interp_coeffs(xp, fps, x[:, None]), expected, rtol=1e-12, atol=1e-15
+    )

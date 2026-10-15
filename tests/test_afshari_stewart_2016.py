@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from pygmm import Scenario
-from pygmm.afshari_stewart_2016 import AfshariStewart2016
+from pygmm.ground_motion import AfshariStewart2016
 
 
 def test_run():

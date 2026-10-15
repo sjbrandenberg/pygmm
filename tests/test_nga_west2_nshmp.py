@@ -19,26 +19,26 @@ import pandas as pd
 import pytest
 
 import pygmm
-from pygmm import nga_west2_nshmp as ngaw2
-from pygmm.model import Scenario
-from pygmm.nga_west2_nshmp import (
+from pygmm.ground_motion import nga_west2_nshmp as ngaw2
+from pygmm.ground_motion.nga_west2_nshmp import (
     AbrahamsonSilvaKamai2014Nshmp as ASK,
 )
-from pygmm.nga_west2_nshmp import (
+from pygmm.ground_motion.nga_west2_nshmp import (
     BooreStewartSeyhanAtkinson2014Nshmp as BSSA,
 )
-from pygmm.nga_west2_nshmp import (
+from pygmm.ground_motion.nga_west2_nshmp import (
     CampbellBozorgnia2014Nshmp as CB,
 )
-from pygmm.nga_west2_nshmp import (
+from pygmm.ground_motion.nga_west2_nshmp import (
     ChiouYoungs2014Nshmp as CY,
 )
-from pygmm.nga_west2_nshmp import (
+from pygmm.ground_motion.nga_west2_nshmp import (
     Idriss2014Nshmp as I14,
 )
-from pygmm.nga_west2_nshmp import (
+from pygmm.ground_motion.nga_west2_nshmp import (
     NgaWest2NshmpTree as Tree,
 )
+from pygmm.model import Scenario
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 COEFF_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "pygmm", "data")
@@ -172,7 +172,7 @@ def test_prvi_reference_results():
 ####################################
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def load_java_coeffs(name):
     """Coefficients by period, read with the Java column names."""
     with open(os.path.join(COEFF_DIR, name)) as fp:

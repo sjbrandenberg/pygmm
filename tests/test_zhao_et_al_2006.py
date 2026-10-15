@@ -18,8 +18,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pygmm.ground_motion.zhao_et_al_2006 import ZhaoEtAl2006 as Zea06
 from pygmm.model import Scenario
-from pygmm.zhao_et_al_2006 import ZhaoEtAl2006 as Zea06
 
 from .test_atkinson_macias_2009 import (
     COEFF_DIR,

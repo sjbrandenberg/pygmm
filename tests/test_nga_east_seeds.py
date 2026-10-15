@@ -9,10 +9,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from pygmm import nga_east
+from pygmm.ground_motion import nga_east
+from pygmm.ground_motion.nga_east import NgaEast, NgaEastSeed, NgaEastSeeds
+from pygmm.ground_motion.nga_east_usgs_2017 import NgaEastUsgs2017
 from pygmm.model import Scenario
-from pygmm.nga_east import NgaEast, NgaEastSeed, NgaEastSeeds
-from pygmm.nga_east_usgs_2017 import NgaEastUsgs2017
 
 from .test_nga_east import REF_CASES, ref_cpa_ratio, ref_sigma, ref_site_amp, ref_table
 

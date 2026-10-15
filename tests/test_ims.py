@@ -340,8 +340,7 @@ def test_psa_not_computed_raises(make, attr):
 
 @pytest.mark.parametrize(
     "model",
-    [m for m in pygmm.models if issubclass(m, GroundMotionModel)]
-    + [pygmm.AbrahamsonGregorAddo2016],
+    [i.cls for i in pygmm.find_models() if issubclass(i.cls, GroundMotionModel)],
     ids=lambda m: m.__name__,
 )
 def test_all_ground_motion_models_accept_ims(model):

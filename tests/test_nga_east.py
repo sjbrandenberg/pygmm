@@ -10,10 +10,10 @@ import pandas as pd
 import pytest
 
 import pygmm
-from pygmm import nga_east
+from pygmm.ground_motion import nga_east
+from pygmm.ground_motion.nga_east import NgaEast
+from pygmm.ground_motion.nga_east_usgs_2017 import NgaEastUsgs2017, _load_tables
 from pygmm.model import Scenario
-from pygmm.nga_east import NgaEast
-from pygmm.nga_east_usgs_2017 import NgaEastUsgs2017, _load_tables
 
 PERIODS = [0.05, 0.3, 1.0, 2.5]
 
@@ -789,5 +789,7 @@ def test_ln_branches_period_weights():
     assert np.ndim(pga[0][0]) == 0
     assert not np.allclose([w for w, _, _ in psa][0], pga[0][0])
     # an individual seed model is a single branch (nshmp-lib combines its sigma)
-    seed = pygmm.NgaEastSeed(pygmm.Scenario(mag=6.5, dist_rup=20.0, dist_jb=20.0, v_s30=760.0))
+    seed = pygmm.NgaEastSeed(
+        pygmm.Scenario(mag=6.5, dist_rup=20.0, dist_jb=20.0, v_s30=760.0)
+    )
     assert len(seed.ln_branches("pga")) == 1

@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 import pytest
 
-from pygmm.kuehn_et_al_2020 import KuehnEtAl2020 as KBCG20
+from pygmm.ground_motion.kuehn_et_al_2020 import KuehnEtAl2020 as KBCG20
 from pygmm.model import Scenario
 
 # nshmp-lib reference results

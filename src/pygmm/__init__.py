@@ -1,6 +1,8 @@
 """pyGMM: Ground motion models implemented in Python."""
 
+import importlib
 import logging
+import warnings
 
 try:
     from ._version import __version__
@@ -8,54 +10,106 @@ except ImportError:
     # For development installs
     __version__ = "unknown"
 
-from .abrahamson_bhasin_2020 import AbrahamsonBhasin2020
-from .abrahamson_gregor_addo_2016 import AbrahamsonGregorAddo2016
-from .abrahamson_gulerce_2020 import AbrahamsonGulerce2020
-from .abrahamson_shi_yang_2016 import AbrahamsonShiYang2016
-from .abrahamson_silva_1996 import AbrahamsonSilva1996
-from .abrahamson_silva_kamai_2014 import AbrahamsonSilvaKamai2014
-from .afshari_stewart_2016 import AfshariStewart2016
-from .akkar_sandikkaya_bommer_2014 import AkkarSandikkayaBommer2014
-from .atkinson_boore_2006 import AtkinsonBoore2006
-from .atkinson_macias_2009 import AtkinsonMacias2009
-from .bayless_abrahamson_2018 import BaylessAbrahamson2018
-from .bayless_abrahamson_2019 import BaylessAbrahamson2019
-from .boore_stewart_seyhan_atkinson_2014 import BooreStewartSeyhanAtkinson2014
-from .campbell_2003 import Campbell2003
-from .campbell_bozorgnia_2014 import CampbellBozorgnia2014
-from .chiou_youngs_2014 import ChiouYoungs2014
-from .coppersmith_bommer_2014 import CoppersmithBommer2014
-from .derras_bard_cotton_2014 import DerrasBardCotton2014
-from .gulerce_abrahamson_2011 import GulerceAbrahamson2011
-from .idriss_2014 import Idriss2014
-from .kempton_stewart_2006 import KemptonStewart2006
-from .kuehn_et_al_2020 import KuehnEtAl2020
-from .macedo_abrahamson_liu_2021 import MacedoAbrahamsonLiu2021
-from .model import Scenario
-from .nga_east import NgaEast, NgaEastSeed, NgaEastSeeds
-from .nga_east_usgs_2017 import NgaEastUsgs2017
-from .nga_subduction_usgs_2018 import NgaSubductionUsgs2018
-from .nga_west2_nshmp import (
-    AbrahamsonSilvaKamai2014Nshmp,
-    BooreStewartSeyhanAtkinson2014Nshmp,
-    CampbellBozorgnia2014Nshmp,
-    ChiouYoungs2014Nshmp,
-    Idriss2014Nshmp,
-    NgaWest2NshmpTree,
+# Expose the model subpackages as attributes, so that `import pygmm` followed
+# by `pygmm.fourier_spectrum.SourceTheoryModel` works. Without this they are
+# reachable only via an explicit `import pygmm.fourier_spectrum`, and which
+# ones happened to be bound depended on whether some name was imported from
+# them below.
+#
+# There are three governed by the independent variable: shear strain ->
+# soil_curves, frequency -> fourier_spectrum, period (or a scalar conditioned
+# on a Scenario) -> ground_motion. Anything else stays at the top level until
+# a second producer of the same quantity earns it a package -- velocity_profile
+# is that case: multiple producers of contracts.VelocityProfile.
+#
+# `soil_curves` is the exception: it is imported lazily (see `__getattr__`
+# below) because it is the only package pulling a heavy third-party
+# dependency, `pint`. Importing it eagerly is how `import pygmm` came to fail
+# outright on any install without pint.
+from . import (
+    contracts,
+    fourier_spectrum,
+    ground_motion,
+    registry,
+    velocity_profile,
 )
-from .parker_et_al_2020 import ParkerEtAl2020
-from .pezeshk_zandieh_tavakoli_2011 import PezeshkZandiehTavakoli2011
-from .stafford_2017 import Stafford2017
-from .tavakoli_pezeshk_2005 import TavakoliPezeshk05
-from .zhao_et_al_2006 import ZhaoEtAl2006
+from .fourier_spectrum import (
+    BaylessAbrahamson2018,
+    BaylessAbrahamson2019,
+    Stafford2017,
+)
+from .ground_motion import (
+    AbrahamsonBhasin2020,
+    AbrahamsonGregorAddo2016,
+    AbrahamsonGulerce2020,
+    AbrahamsonShiYang2016,
+    AbrahamsonSilva1996,
+    AbrahamsonSilvaKamai2014,
+    AbrahamsonSilvaKamai2014Nshmp,
+    AfshariStewart2016,
+    AkkarSandikkayaBommer2014,
+    AtkinsonBoore2006,
+    AtkinsonMacias2009,
+    BooreStewartSeyhanAtkinson2014,
+    BooreStewartSeyhanAtkinson2014Nshmp,
+    Campbell2003,
+    CampbellBozorgnia2014,
+    CampbellBozorgnia2014Nshmp,
+    ChiouYoungs2014,
+    ChiouYoungs2014Nshmp,
+    CoppersmithBommer2014,
+    DerrasBardCotton2014,
+    GulerceAbrahamson2011,
+    Idriss2014,
+    Idriss2014Nshmp,
+    KemptonStewart2006,
+    KuehnEtAl2020,
+    MacedoAbrahamsonLiu2021,
+    NgaEast,
+    NgaEastSeed,
+    NgaEastSeeds,
+    NgaEastUsgs2017,
+    NgaSubductionUsgs2018,
+    NgaWest2NshmpTree,
+    ParkerEtAl2020,
+    PezeshkZandiehTavakoli2011,
+    PinillaRamosEtAl2023,
+    PinillaRamosEtAl2024,
+    TavakoliPezeshk05,
+    ZhaoEtAl2006,
+)
+from .model import Scenario
+from .registry import ModelInfo, get_model, register
+from .velocity_profile import (
+    bj97gr760_profile,
+    bj97gr_profile,
+    bj97gvhr_profile,
+    btc11_profile,
+    kea16_profile,
+    sa18_profile,
+)
 
 __all__ = [
+    # Model subpackages
+    "contracts",
+    "fourier_spectrum",
+    "ground_motion",
+    "soil_curves",
+    "velocity_profile",
+    # Registry
+    "ModelInfo",
+    "find_models",
+    "get_model",
+    "register",
+    # Models and helpers
     "Scenario",
     "AbrahamsonBhasin2020",
-    "AbrahamsonShiYang2016",
-    "AbrahamsonSilvaKamai2014",
     "AbrahamsonGregorAddo2016",
     "AbrahamsonGulerce2020",
+    "AbrahamsonShiYang2016",
+    "AbrahamsonSilva1996",
+    "AbrahamsonSilvaKamai2014",
+    "AbrahamsonSilvaKamai2014Nshmp",
     "AfshariStewart2016",
     "AkkarSandikkayaBommer2014",
     "AtkinsonBoore2006",
@@ -63,32 +117,45 @@ __all__ = [
     "BaylessAbrahamson2018",
     "BaylessAbrahamson2019",
     "BooreStewartSeyhanAtkinson2014",
+    "BooreStewartSeyhanAtkinson2014Nshmp",
     "Campbell2003",
     "CampbellBozorgnia2014",
+    "CampbellBozorgnia2014Nshmp",
     "ChiouYoungs2014",
+    "ChiouYoungs2014Nshmp",
     "CoppersmithBommer2014",
     "DerrasBardCotton2014",
     "GulerceAbrahamson2011",
+    "Idriss2014",
+    "Idriss2014Nshmp",
     "KemptonStewart2006",
     "KuehnEtAl2020",
     "MacedoAbrahamsonLiu2021",
-    "Idriss2014",
     "NgaEast",
     "NgaEastSeed",
     "NgaEastSeeds",
     "NgaEastUsgs2017",
     "NgaSubductionUsgs2018",
-    "AbrahamsonSilvaKamai2014Nshmp",
-    "BooreStewartSeyhanAtkinson2014Nshmp",
-    "CampbellBozorgnia2014Nshmp",
-    "ChiouYoungs2014Nshmp",
-    "Idriss2014Nshmp",
     "NgaWest2NshmpTree",
     "ParkerEtAl2020",
     "PezeshkZandiehTavakoli2011",
-    "TavakoliPezeshk05",
+    "PinillaRamosEtAl2023",
+    "PinillaRamosEtAl2024",
     "Stafford2017",
+    "TavakoliPezeshk05",
     "ZhaoEtAl2006",
+    "AlemuEtAlSoilType",
+    "DarendeliSoilType",
+    "KishidaSoilType",
+    "MenqSoilType",
+    "RollinsEtAlSoilType",
+    "WangSoilType",
+    "kea16_profile",
+    "sa18_profile",
+    "bj97gr760_profile",
+    "bj97gr_profile",
+    "bj97gvhr_profile",
+    "btc11_profile",
 ]
 
 __author__ = "Albert Kottke"
@@ -97,50 +164,59 @@ __license__ = "MIT"
 __title__ = "pyGMM"
 
 # Set default logging handler to avoid "No handler found" warnings.
-try:  # Python 2.7+
-    from logging import NullHandler
-except ImportError:
-
-    class NullHandler(logging.Handler):
-        def emit(self, record):
-            pass
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 
-logging.getLogger(__name__).addHandler(NullHandler())
+#: Names served from `soil_curves`, which is imported on first use rather than
+#: at `import pygmm` -- see the note on `pint` above.
+_LAZY_SOIL_CURVES = frozenset(
+    {
+        "AlemuEtAlSoilType",
+        "DarendeliSoilType",
+        "KishidaSoilType",
+        "MenqSoilType",
+        "RollinsEtAlSoilType",
+        "WangSoilType",
+    }
+)
 
-models = [
-    AbrahamsonSilva1996,
-    AbrahamsonSilvaKamai2014,
-    AfshariStewart2016,
-    AkkarSandikkayaBommer2014,
-    AtkinsonBoore2006,
-    BaylessAbrahamson2019,
-    BooreStewartSeyhanAtkinson2014,
-    Campbell2003,
-    CampbellBozorgnia2014,
-    ChiouYoungs2014,
-    CoppersmithBommer2014,
-    DerrasBardCotton2014,
-    GulerceAbrahamson2011,
-    KemptonStewart2006,
-    Idriss2014,
-    NgaEast,
-    NgaEastSeed,
-    NgaEastSeeds,
-    NgaEastUsgs2017,
-    NgaSubductionUsgs2018,
-    AbrahamsonSilvaKamai2014Nshmp,
-    BooreStewartSeyhanAtkinson2014Nshmp,
-    CampbellBozorgnia2014Nshmp,
-    ChiouYoungs2014Nshmp,
-    Idriss2014Nshmp,
-    NgaWest2NshmpTree,
-    AbrahamsonGulerce2020,
-    KuehnEtAl2020,
-    ParkerEtAl2020,
-    AtkinsonMacias2009,
-    ZhaoEtAl2006,
-    PezeshkZandiehTavakoli2011,
-    TavakoliPezeshk05,
-    Stafford2017,
-]
+
+def _load_soil_curves():
+    # `from . import soil_curves` would re-enter `__getattr__` below and
+    # recurse; `import_module` binds the submodule without an attribute
+    # lookup on this package.
+    return importlib.import_module(".soil_curves", __name__)
+
+
+def find_models(**kwds):
+    """Return registered models matching the filters.
+
+    Wraps :func:`pygmm.registry.find_models`, importing the lazily-loaded
+    ``soil_curves`` package first so the registry is always complete no matter
+    what the caller has imported.
+
+    See :func:`pygmm.registry.find_models` for the accepted filters.
+    """
+    _load_soil_curves()
+    return registry.find_models(**kwds)
+
+
+def __getattr__(name):
+    if name in _LAZY_SOIL_CURVES:
+        return getattr(_load_soil_curves(), name)
+
+    if name == "soil_curves":
+        return _load_soil_curves()
+
+    if name == "models":
+        warnings.warn(
+            "pygmm.models is deprecated; use pygmm.find_models(provides='psa') "
+            "or another capability filter. The list mixed response-spectrum, "
+            "duration, FAS and correlation models with no way to tell them "
+            "apart -- 7 of its 20 entries had no .spec_accels.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return [info.cls for info in find_models()]
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -15,7 +15,7 @@ import warnings
 import numpy as np
 import pytest
 
-from pygmm.abrahamson_gulerce_2020 import AbrahamsonGulerce2020 as AG20
+from pygmm.ground_motion.abrahamson_gulerce_2020 import AbrahamsonGulerce2020 as AG20
 from pygmm.model import Scenario
 
 # The reference inputs include V_s30 values above the recommended limit

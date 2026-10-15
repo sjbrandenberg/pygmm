@@ -10,7 +10,10 @@ import pandas as pd
 import pytest
 
 from pygmm import Scenario
-from pygmm.pinilla_ramos_et_al_2024 import PinillaRamosEtAl2024, duration_model
+from pygmm.ground_motion.pinilla_ramos_et_al_2024 import (
+    PinillaRamosEtAl2024,
+    duration_model,
+)
 
 
 class TestPinillaRamosEtAl2024:
@@ -699,7 +702,9 @@ if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
 
-@pytest.mark.parametrize("event_type,region", [("interface", "Japan"), ("slab", "Taiwan")])
+@pytest.mark.parametrize(
+    "event_type,region", [("interface", "Japan"), ("slab", "Taiwan")]
+)
 @pytest.mark.parametrize("threshold", ["D5-10", "D5-50", "D5-75", "D5-95"])
 def test_d5x_matches_duration_for_energy(event_type, region, threshold):
     # d5x_median and d5x_sigma use the conditional model, like duration_for_energy
@@ -726,7 +731,9 @@ def test_d5x_matches_duration_for_energy(event_type, region, threshold):
 @pytest.mark.parametrize("threshold", ["D5-99", "D5-12", "D5-", "5-95", 95])
 def test_d5x_unsupported_thresholds_raise(threshold):
     m = PinillaRamosEtAl2024(
-        Scenario(mag=7.0, dist_rup=100.0, v_s30=400.0, region="Japan", event_type="interface")
+        Scenario(
+            mag=7.0, dist_rup=100.0, v_s30=400.0, region="Japan", event_type="interface"
+        )
     )
     with pytest.raises(ValueError, match="Unsupported energy threshold"):
         m.d5x_median(threshold)
