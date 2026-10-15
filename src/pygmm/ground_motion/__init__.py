@@ -41,16 +41,12 @@ from .kempton_stewart_2006 import KemptonStewart2006
 from .kishida_2017 import calc_cond_mean_spectrum_vector
 from .kuehn_et_al_2020 import KuehnEtAl2020
 from .macedo_abrahamson_liu_2021 import MacedoAbrahamsonLiu2021
-from .nga_east import NgaEast, NgaEastSeed, NgaEastSeeds
-from .nga_east_usgs_2017 import NgaEastUsgs2017
-from .nga_subduction_usgs_2018 import NgaSubductionUsgs2018
+from .nga_east import NgaEast, NgaEastSeeds
 from .nga_west2_nshmp import (
     AbrahamsonSilvaKamai2014Nshmp,
     BooreStewartSeyhanAtkinson2014Nshmp,
     CampbellBozorgnia2014Nshmp,
     ChiouYoungs2014Nshmp,
-    Idriss2014Nshmp,
-    NgaWest2NshmpTree,
 )
 from .parker_et_al_2020 import ParkerEtAl2020
 from .pezeshk_zandieh_tavakoli_2011 import PezeshkZandiehTavakoli2011
@@ -82,16 +78,11 @@ __all__ = [
     "DerrasBardCotton2014",
     "GulerceAbrahamson2011",
     "Idriss2014",
-    "Idriss2014Nshmp",
     "KemptonStewart2006",
     "KuehnEtAl2020",
     "MacedoAbrahamsonLiu2021",
     "NgaEast",
-    "NgaEastSeed",
     "NgaEastSeeds",
-    "NgaEastUsgs2017",
-    "NgaSubductionUsgs2018",
-    "NgaWest2NshmpTree",
     "ParkerEtAl2020",
     "PezeshkZandiehTavakoli2011",
     "PinillaRamosEtAl2023",

@@ -11,8 +11,12 @@ import pytest
 
 import pygmm
 from pygmm.ground_motion import nga_east
-from pygmm.ground_motion.nga_east import NgaEast
-from pygmm.ground_motion.nga_east_usgs_2017 import NgaEastUsgs2017, _load_tables
+from pygmm.ground_motion.nga_east import (
+    TABLE_DISTS,
+    TABLE_MAGS,
+    NgaEast,
+    _load_tables,
+)
 from pygmm.model import Scenario
 
 PERIODS = [0.05, 0.3, 1.0, 2.5]
@@ -88,24 +92,6 @@ def test_nshmp_variants_differ():
         assert np.all(np.abs(diff[on_cpa & (NSHMP.v_s30 < 3000)]) > 0)
 
 
-def test_2018_median_matches_nga_east_usgs_2017():
-    # The 2018 median is the same as nshmp-haz, but the standard deviation is the
-    # square root of the weighted mean of the variances
-    rng = np.random.default_rng(1)
-    kwds = dict(
-        mag=rng.uniform(4.0, 8.2, 200),
-        dist_rup=rng.uniform(0.0, 1000.0, 200),
-        v_s30=rng.uniform(150.0, 3000.0, 200),
-    )
-    m = compute(version="2018", **kwds)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        old = NgaEastUsgs2017(Scenario(**kwds))
-    np.testing.assert_allclose(m._ln_resp, old._ln_resp, rtol=0, atol=1e-13)
-    assert np.all(m._ln_std > old._ln_std)
-    assert np.max(m._ln_std - old._ln_std) < 0.005
-
-
 # Scalar transliteration of nshmp-lib NgaEast.NgaEast_2018 and NgaEast_2023, used
 # to check the vectorized model at cases that are not in the nshmp-lib results
 
@@ -121,10 +107,10 @@ def ref_position(keys, value):
 def ref_table(table, mag, dist_rup):
     # table has shape (distances, magnitudes)
     ir, fr = ref_position(
-        np.log10(NgaEastUsgs2017.TABLE_DISTS),
+        np.log10(TABLE_DISTS),
         math.log10(dist_rup) if dist_rup > 0 else -math.inf,
     )
-    im, fm = ref_position(NgaEastUsgs2017.TABLE_MAGS, mag)
+    im, fm = ref_position(TABLE_MAGS, mag)
     i1 = table[ir, im] + fm * (table[ir, im + 1] - table[ir, im])
     i2 = table[ir + 1, im] + fm * (table[ir + 1, im + 1] - table[ir + 1, im])
     return i1 + fr * (i2 - i1)
@@ -249,7 +235,7 @@ def ref_sigma(c, mag, v_s30):
 def ref_model(version, adjusted, cpa, mag, dist_rup, dist_jb, v_s30, depth_sed):
     """ln median and sigma at all periods of the nshmp-lib logic tree."""
     tables = _load_tables()
-    n_r, n_m = len(NgaEastUsgs2017.TABLE_DISTS), len(NgaEastUsgs2017.TABLE_MAGS)
+    n_r, n_m = len(TABLE_DISTS), len(TABLE_MAGS)
     z_score = 1.0 if version == "2018" else 1.645
     if depth_sed is None or math.isnan(depth_sed):
         z_scale = 0.0
@@ -788,8 +774,3 @@ def test_ln_branches_period_weights():
     pga = m.ln_branches("pga")
     assert np.ndim(pga[0][0]) == 0
     assert not np.allclose([w for w, _, _ in psa][0], pga[0][0])
-    # an individual seed model is a single branch (nshmp-lib combines its sigma)
-    seed = pygmm.NgaEastSeed(
-        pygmm.Scenario(mag=6.5, dist_rup=20.0, dist_jb=20.0, v_s30=760.0)
-    )
-    assert len(seed.ln_branches("pga")) == 1

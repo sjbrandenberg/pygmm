@@ -1,4 +1,4 @@
-# NGA-East (nshmp-lib) coefficients that are not in nga_east_usgs_2017.csv. Period -1 is PGV and 0 is PGA.
+# NGA-East (nshmp-lib) coefficients that are not in nga_east.csv. Period -1 is PGV and 0 is PGA.
 # f4mod: Hashash et al. (2020) nonlinear site coefficient (src/main/resources/gmm/coeffs/nga-east-usgs-siteamp.csv); nga_adj and vs30_b: 2023 NSHM adjustments of the hard-rock median (src/main/resources/gmm/coeffs/nga-east-usgs-adj-2023.csv).
 # Source: USGS nshmp-lib (https://code.usgs.gov/ghsc/nshmp/nshmp-lib), commit 44728a7d. nshmp-lib is a work of the U.S. Government and is in the public domain.
 period,f4mod,nga_adj,vs30_b

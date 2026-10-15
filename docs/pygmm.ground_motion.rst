@@ -204,22 +204,6 @@ pygmm.ground\_motion.nga\_east module
    :show-inheritance:
    :undoc-members:
 
-pygmm.ground\_motion.nga\_east\_usgs\_2017 module
--------------------------------------------------
-
-.. automodule:: pygmm.ground_motion.nga_east_usgs_2017
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
-pygmm.ground\_motion.nga\_subduction\_usgs\_2018 module
--------------------------------------------------------
-
-.. automodule:: pygmm.ground_motion.nga_subduction_usgs_2018
-   :members:
-   :show-inheritance:
-   :undoc-members:
-
 pygmm.ground\_motion.nga\_west2\_nshmp module
 ---------------------------------------------
 

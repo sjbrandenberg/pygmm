@@ -32,12 +32,6 @@ from pygmm.ground_motion.nga_west2_nshmp import (
 from pygmm.ground_motion.nga_west2_nshmp import (
     ChiouYoungs2014Nshmp as CY,
 )
-from pygmm.ground_motion.nga_west2_nshmp import (
-    Idriss2014Nshmp as I14,
-)
-from pygmm.ground_motion.nga_west2_nshmp import (
-    NgaWest2NshmpTree as Tree,
-)
 from pygmm.model import Scenario
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -45,7 +39,42 @@ COEFF_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "pygmm", "data"
 
 pytestmark = pytest.mark.filterwarnings("ignore:.*recommended limit:UserWarning")
 
-MODELS = {"ASK": ASK, "BSSA": BSSA, "CB": CB, "CY": CY, "IDRISS": I14}
+MODELS = {"ASK": ASK, "BSSA": BSSA, "CB": CB, "CY": CY}
+
+# Active crust logic trees of the 2023 CONUS NSHM (nshmp-lib GmmTotalTree) as
+# (model, options, weight)
+TOTAL_TREES = {
+    "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023": [
+        (cls, dict(basin=True), 0.25) for cls in MODELS.values()
+    ],
+    "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_LOS_ANGELES": [
+        (cls, options, weight)
+        for options, weight in [
+            (dict(), 0.125),
+            (dict(basin=True), 0.0625),
+            (dict(basin=True, cybershake=True), 0.0625),
+        ]
+        for cls in MODELS.values()
+    ],
+    "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_SAN_FRANCISCO": [
+        (cls, options, 0.125)
+        for options in [dict(), dict(basin=True)]
+        for cls in MODELS.values()
+    ],
+}
+
+
+def combine_tree(scenario, components):
+    """Collapsed median and standard deviation of a logic tree.
+
+    As nshmp-lib ``GroundMotions.combine``: ln(sum(w * exp(mu))) and
+    sqrt(sum(w * sigma**2)).
+    """
+    models = [(cls(scenario, **options), w) for cls, options, w in components]
+    resp = sum(w * np.exp(m._ln_resp) for m, w in models)
+    var = sum(w * m._ln_std**2 for m, w in models)
+    return np.log(resp), np.sqrt(var)
+
 
 # Atol of the nshmp-lib results, which are written with 10 decimals
 ATOL = 5.1e-11
@@ -78,19 +107,12 @@ def period_columns(cls, periods):
     return np.array([np.flatnonzero(cls.PERIODS == p)[0] for p in periods])
 
 
-def reference_model(gmm):
-    if gmm.startswith("TOTAL_TREE"):
-        return Tree, Tree.GMM_IDS[gmm]
-    cls = MODELS[gmm.split("_")[0]]
-    return cls, cls.GMM_IDS[gmm]
-
-
 REFERENCE_GMMS = sorted(g for g in set(NSHMP["gmm"]) if not g.startswith("PRVI"))
 
 
 def test_reference_results_coverage():
     counts = NSHMP.groupby("gmm").size()
-    for name in ["ASK", "BSSA", "CB", "CY", "IDRISS"]:
+    for name in ["ASK", "BSSA", "CB", "CY"]:
         # 107 inputs and PGA, 0.02, 0.2, 1, and 3 s
         assert counts[name + "_14_BASE"] == 107 * 5
     for name in ["ASK", "BSSA", "CB", "CY"]:
@@ -98,24 +120,31 @@ def test_reference_results_coverage():
         assert counts[name + "_14_BASIN"] == 20 * 8
         assert counts[name + "_14_CYBERSHAKE"] == 20 * 8
     # 107 inputs and PGA, PGV, and the 21 periods
-    for gmm in Tree.GMM_IDS:
+    for gmm in TOTAL_TREES:
         assert counts[gmm] == 107 * 23
     # 107 inputs and PGA and the 21 periods
     assert counts["PRVI_2025_ACTIVE_CRUST"] == 107 * 22
     assert counts["PRVI_2025_ACTIVE_CRUST_ADJUSTED"] == 107 * 22
-    assert len(REFERENCE_GMMS) == 16
+    assert len(REFERENCE_GMMS) == 15
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 @pytest.mark.parametrize("gmm", REFERENCE_GMMS)
 def test_nshmp_reference_results(gmm):
     df = NSHMP[NSHMP["gmm"] == gmm]
-    cls, options = reference_model(gmm)
-    m = cls(reference_scenario(df), **options)
+    s = reference_scenario(df)
+    if gmm in TOTAL_TREES:
+        cls = ASK
+        assert all(np.array_equal(c.PERIODS, cls.PERIODS) for c in MODELS.values())
+        ln_resp, ln_std = combine_tree(s, TOTAL_TREES[gmm])
+    else:
+        cls = MODELS[gmm.split("_")[0]]
+        m = cls(s, **cls.GMM_IDS[gmm])
+        ln_resp, ln_std = m._ln_resp, m._ln_std
     rows = np.arange(len(df))
     cols = period_columns(cls, df["period"].values)
-    median = np.exp(m._ln_resp[rows, cols])
-    sigma = m._ln_std[rows, cols]
+    median = np.exp(ln_resp[rows, cols])
+    sigma = ln_std[rows, cols]
     np.testing.assert_allclose(median, df["median"], rtol=0, atol=ATOL)
     np.testing.assert_allclose(sigma, df["sigma"], rtol=0, atol=ATOL)
 
@@ -130,7 +159,7 @@ def test_reference_variants_differ():
             np.abs(results(name + "_14_BASIN") - results(name + "_14_CYBERSHAKE"))
             > 1e-3
         )
-    conus, la, sf = (results(g) for g in Tree.GMM_IDS)
+    conus, la, sf = (results(g) for g in TOTAL_TREES)
     assert np.any(np.abs(conus - la) > 1e-3)
     assert np.any(np.abs(conus - sf) > 1e-3)
 
@@ -717,36 +746,6 @@ def java_cy(imt, inp, usgs_basin, vs_inferred, cybershake, prvi):
     return mu, sigma
 
 
-# Idriss_2014
-
-
-def java_idriss(imt, inp):
-    c = load_java_coeffs("idriss_2014-nshmp.csv")[imt]
-    Mw, rRup = inp["Mw"], inp["rRup"]
-    style = fault_style(inp["mechanism"])
-    a1, a2, b1, b2 = c["a1_lo"], c["a2_lo"], c["b1_lo"], c["b2_lo"]
-    if Mw > 6.75:
-        a1, a2, b1, b2 = c["a1_hi"], c["a2_hi"], c["b1_hi"], c["b2_hi"]
-    mu = (
-        a1
-        + a2 * Mw
-        + c["a3"] * (8.5 - Mw) * (8.5 - Mw)
-        - (b1 + b2 * Mw) * math.log(rRup + 10.0)
-        + c["xi"] * math.log(min(inp["vs30"], 1200.0))
-        + c["gamma"] * rRup
-        + (c["phi"] if style == "REVERSE" else 0.0)
-    )
-    s1 = 0.035
-    if is_sa(imt):
-        T = imt
-        s1 *= math.log(0.05) if T <= 0.05 else math.log(T) if T < 3.0 else math.log(3.0)
-    else:
-        s1 *= math.log(0.05)
-    s2 = 0.06
-    s2 *= 5.0 if Mw <= 5.0 else Mw if Mw < 7.5 else 7.5
-    return mu, 1.18 + s1 - s2
-
-
 def java_calc(name, imt, inp, options):
     """nshmp-lib ground motion (mean, sigma) of a model and options."""
     epistemic = options.get("epistemic", True)
@@ -760,10 +759,8 @@ def java_calc(name, imt, inp, options):
         mu, sigma = java_bssa(imt, inp, basin, cybershake, prvi)
     elif name == "CB":
         mu, sigma = java_cb(imt, inp, basin, cybershake, prvi)
-    elif name == "CY":
-        mu, sigma = java_cy(imt, inp, basin, vs_inferred, cybershake, prvi)
     else:
-        mu, sigma = java_idriss(imt, inp)
+        mu, sigma = java_cy(imt, inp, basin, vs_inferred, cybershake, prvi)
     if epistemic:
         mu = epi_tree(mu, inp["Mw"], inp["rJB"])
     return mu, sigma
@@ -905,18 +902,6 @@ def test_grid_exercises_branches(grid):
         assert np.any(np.asarray(scenario.dist_x) < 0)
 
 
-@pytest.mark.filterwarnings("ignore::UserWarning")
-def test_tree_matches_components(grid):
-    rows, scenario = grid
-    for tree, branches in Tree.TREES.items():
-        m = Tree(scenario, tree=tree)
-        assert math.isclose(sum(w for _, _, w in branches), 1.0)
-        resp = sum(w * np.exp(cls(scenario, **o)._ln_resp) for cls, o, w in branches)
-        var = sum(w * cls(scenario, **o)._ln_std ** 2 for cls, o, w in branches)
-        np.testing.assert_allclose(m._ln_resp, np.log(resp), rtol=1e-14)
-        np.testing.assert_allclose(m._ln_std, np.sqrt(var), rtol=1e-14)
-
-
 # Model details
 ###############
 
@@ -929,10 +914,8 @@ def test_coefficient_files():
             cls.PERIODS[cls.INDICES_PSA], cls.PERIODS_NGAWEST2_21, rtol=0
         )
         assert cls.PERIODS[cls.INDEX_PGA] == 0
-        if cls is not I14:
-            assert cls.PERIODS[cls.INDEX_PGV] == -1
-            np.testing.assert_array_equal(cls.COEFF_PRVI["period"], cls.PERIODS)
-    assert I14.INDEX_PGV is None
+        assert cls.PERIODS[cls.INDEX_PGV] == -1
+        np.testing.assert_array_equal(cls.COEFF_PRVI["period"], cls.PERIODS)
     # The PRVI coefficients only replace some columns
     for cls, names in [
         (ASK, {"a1", "a10"}),
@@ -1109,25 +1092,6 @@ def test_epistemic_branches(cls):
     np.testing.assert_allclose(np.log(w @ np.exp(ln)), epi.ln_pga, rtol=1e-12)
 
 
-@pytest.mark.filterwarnings("ignore::UserWarning")
-def test_tree_branches(grid):
-    _, scenario = grid
-    for tree, components in Tree.TREES.items():
-        m = Tree(scenario, tree=tree, ims=["pga"])
-        branches = m.ln_branches("pga")
-        assert len(branches) == 3 * len(components)
-        assert math.isclose(sum(w for w, _, _ in branches), 1.0)
-        expected = [
-            (w * w_epi, ln, std)
-            for cls, o, w in components
-            for w_epi, ln, std in cls(scenario, ims=["pga"], **o).ln_branches("pga")
-        ]
-        for (w, ln, std), (w_e, ln_e, std_e) in zip(branches, expected):
-            assert math.isclose(w, w_e)
-            np.testing.assert_array_equal(ln, ln_e)
-            np.testing.assert_array_equal(std, std_e)
-
-
 def test_width_from_depth_bor_and_depth_hyp():
     params = dict(SCENARIO)
     params.pop("width")
@@ -1148,7 +1112,7 @@ def test_width_from_depth_bor_and_depth_hyp():
 
 def test_unspecified_mechanism():
     # "U" uses e0 in BSSA14 and is the same as strike-slip in the other models
-    for cls in [ASK, CB, CY, I14]:
+    for cls in [ASK, CB, CY]:
         np.testing.assert_array_equal(
             cls(scenario(mechanism="U")).spec_accels,
             cls(scenario(mechanism="SS")).spec_accels,
@@ -1165,20 +1129,9 @@ def test_options():
         ASK(s, cybershake=True)
     with pytest.raises(TypeError):
         BSSA(s, vs30_measured=True)
-    with pytest.raises(TypeError):
-        I14(s, basin=True)
-    with pytest.raises(ValueError, match="tree must be one of"):
-        Tree(s, tree="seattle")
     m = CY(s, **CY.GMM_IDS["CY_14_CYBERSHAKE"])
     assert m.basin and m.cybershake and m.epistemic and not m.prvi
     assert not m.vs30_measured
-
-
-def test_idriss_dist_jb_for_epistemic():
-    s = Scenario(mag=7.0, dist_rup=10.0, v_s30=760.0, mechanism="SS")
-    with pytest.raises(ValueError, match="dist_jb is required"):
-        I14(s)
-    assert I14(s, epistemic=False).pga > 0
 
 
 def test_missing_values_raise():
@@ -1204,7 +1157,6 @@ def test_gmm_ids():
             prefix + s
             for s in ["_14", "_14_BASE", "_14_BASIN", "_14_CYBERSHAKE", "_14_PRVI"]
         }
-    assert set(I14.GMM_IDS) == {"IDRISS_14", "IDRISS_14_BASE"}
     for cls in MODELS.values():
         for options in cls.GMM_IDS.values():
             cls(scenario(), **options)
@@ -1233,7 +1185,6 @@ def test_published_models():
       limit of the short periods uses the reference rock PGA of the period.
     - CY14: the published model uses 570.94 m/sec instead of 571 m/sec in the
       reference Z_1.0.
-    - Idriss (2014): nshmp-lib caps V_s30 at 1200 m/sec.
     """
     inp = NSHMP[NSHMP["gmm"] == "ASK_14_BASE"].drop_duplicates("index")
     inp = inp.sort_values("index").reset_index(drop=True)
@@ -1310,14 +1261,6 @@ def test_published_models():
                 on_hanging_wall=on_hw,
             )
         ),
-        "IDRISS": pygmm.Idriss2014(
-            Scenario(
-                mag=geom["mag"],
-                dist_rup=geom["dist_rup"],
-                v_s30=v_s30,
-                mechanism=np.where(mech == "RS", "RS", "SS"),
-            )
-        ),
     }
     periods = [0.0, 0.02, 0.2, 1.0, 3.0]
     for name, m in published.items():
@@ -1349,17 +1292,10 @@ def test_published_models():
             # Reference rock Z_2.5
             assert np.max(np.abs(diff[~other])) < 3e-6
             other[:] = True
-        elif name == "CY":
-            # Reference Z_1.0
+        else:
+            # CY14: reference Z_1.0
             other = np.repeat(~np.isnan(z1)[:, np.newaxis], len(periods), axis=1)
             assert np.max(np.abs(diff[other])) < 2e-3
-        else:
-            # V_s30 cap
-            other = np.repeat((v_s30 > 1200)[:, np.newaxis], len(periods), axis=1)
-            expected = I14.COEFF["xi"][[0, 2, 8, 14, 17]] * np.log(
-                v_s30[:, np.newaxis] / 1200
-            )
-            np.testing.assert_allclose(diff[other], expected[other], rtol=1e-9)
         # Rounding of the reference medians to 10 decimals
         tol = ATOL / ref.values + 1e-10
         assert np.all(np.abs(diff[~other]) <= tol[~other]), name
@@ -1393,14 +1329,14 @@ def assert_matches(actual, desired, key):
         np.testing.assert_array_equal(actual, desired, err_msg=key)
 
 
-ALL_CLASSES = list(MODELS.values()) + [Tree]
+ALL_CLASSES = list(MODELS.values())
 
 
 @pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 def test_vectorized_matches_scalar(grid, cls):
     rows, _ = grid
     rows = rows[::11]
-    options = dict(basin=True) if cls in (ASK, BSSA, CB, CY) else {}
+    options = dict(basin=True)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         m = cls(grid_scenario(rows), **options)
@@ -1506,8 +1442,8 @@ def test_pga_only_matches_default(cls, ims):
 )
 def test_psa_matches_default(cls, ims):
     s = vector_scenario()
-    full = cls(s, basin=True) if cls in (ASK, BSSA, CB, CY) else cls(s)
-    m = cls(s, ims=ims, basin=True) if cls in (ASK, BSSA, CB, CY) else cls(s, ims=ims)
+    full = cls(s, basin=True)
+    m = cls(s, ims=ims, basin=True)
     cols = [
         np.flatnonzero(np.isclose(full.periods, m.psa_period(im)))[0]
         for im in ims
@@ -1527,15 +1463,10 @@ def test_psa_ngawest2_21_is_all_periods(cls):
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
-@pytest.mark.parametrize("cls", [ASK, BSSA, CB, CY, Tree], ids=lambda c: c.__name__)
+@pytest.mark.parametrize("cls", ALL_CLASSES, ids=lambda c: c.__name__)
 def test_pgv_only_matches_default(cls):
     s = vector_scenario(50)
     np.testing.assert_array_equal(cls(s, ims=["pgv"]).pgv, cls(s).pgv)
-
-
-def test_idriss_has_no_pgv():
-    with pytest.raises(ValueError, match="does not provide 'pgv'"):
-        I14(scenario(), ims=["pgv"])
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
@@ -1551,7 +1482,7 @@ def test_ln_pga(cls, ims):
 def test_timing():
     s = vector_scenario(100_000)
     for cls in ALL_CLASSES:
-        options = dict(basin=True) if cls in (ASK, BSSA, CB, CY) else {}
+        options = dict(basin=True)
         start = time.perf_counter()
         cls(s, **options)
         all_ims = time.perf_counter() - start

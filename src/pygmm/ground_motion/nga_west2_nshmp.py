@@ -9,10 +9,6 @@ Geological Survey national seismic hazard models (NSHMs):
   ``BSSA_14*``)
 - :class:`CampbellBozorgnia2014Nshmp` (``CampbellBozorgnia_2014``, ``CB_14*``)
 - :class:`ChiouYoungs2014Nshmp` (``ChiouYoungs_2014``, ``CY_14*``)
-- :class:`Idriss2014Nshmp` (``Idriss_2014``, ``IDRISS_14*``)
-- :class:`NgaWest2NshmpTree`, the weighted logic trees of these models used by
-  the 2023 conterminous U.S. (CONUS) NSHM for active crust
-  (``TOTAL_TREE_CONUS_ACTIVE_CRUST_2023*``).
 
 These are separate from the published implementations (e.g.,
 :class:`~pygmm.ground_motion.abrahamson_silva_kamai_2014.AbrahamsonSilvaKamai2014`),
@@ -73,8 +69,7 @@ The models are vectorized. Each scenario value can be a scalar or an array,
 and the arrays are broadcast against each other. For a scalar scenario, the
 response and standard deviation have one value per period. For arrays of N
 scenarios, they have shape (N, periods), so, for example, ``pga`` has shape
-(N,). All models provide PGA, PGV (except Idriss (2014)), and the 21
-NGA-West2 comparison periods.
+(N,). All models provide PGA, PGV, and the 21 NGA-West2 comparison periods.
 
 The scenario values (with the nshmp-lib names) are:
 
@@ -82,7 +77,7 @@ The scenario values (with the nshmp-lib names) are:
 pygmm                   nshmp-lib     used by
 ======================  ============  ==========================================
 ``mag``                 ``Mw``        all
-``dist_rup``            ``rRup``      ASK14, CB14, CY14, Idriss (2014)
+``dist_rup``            ``rRup``      ASK14, CB14, CY14
 ``dist_jb``             ``rJB``       ASK14, BSSA14, CB14, CY14, and the
                                       epistemic uncertainty (all models)
 ``dist_x``              ``rX``        ASK14, CB14, CY14
@@ -111,8 +106,8 @@ References
 ----------
 USGS nshmp-lib, ``gov.usgs.earthquake.nshmp.gmm.AbrahamsonEtAl_2014``,
 ``BooreEtAl_2014``, ``CampbellBozorgnia_2014``, ``ChiouYoungs_2014``,
-``Idriss_2014``, ``GmmUtils``, ``GroundMotions``, and ``GmmTotalTree``, commit
-44728a7d (https://code.usgs.gov/ghsc/nshmp/nshmp-lib).
+``GmmUtils``, and ``GroundMotions``, commit 44728a7d
+(https://code.usgs.gov/ghsc/nshmp/nshmp-lib).
 """
 
 from typing import Any
@@ -1523,234 +1518,3 @@ class ChiouYoungs2014Nshmp(_NgaWest2NshmpBase):
         sigma_nl0 = sigma_nl0 * np.sqrt(vs_term + nl0_sq)
         ln_std = np.sqrt(tau * tau * nl0_sq + sigma_nl0 * sigma_nl0)
         return ln_resp, ln_std
-
-
-@register(tectonic="active_crustal")
-class Idriss2014Nshmp(_NgaWest2NshmpBase):
-    r"""Idriss (2014) model as implemented in nshmp-lib.
-
-    The ``Idriss_2014`` class of USGS nshmp-lib (commit 44728a7d), with the
-    coefficients of ``Idriss14.csv`` (see
-    :mod:`pygmm.ground_motion.nga_west2_nshmp` for the options and the scenario
-    values). The large-magnitude coefficients are
-    used for magnitudes greater than 6.75, :math:`V_{S30}` is capped at 1200
-    m/sec, and the reverse-faulting term is used for reverse faulting. PGV is
-    not provided. ``dist_jb`` is only needed for the epistemic uncertainty.
-
-    The nshmp-lib ``Gmm`` ids are (see :attr:`GMM_IDS`):
-
-    ========================  =========================================
-    nshmp-lib ``Gmm``         Options
-    ========================  =========================================
-    ``IDRISS_14``             (defaults)
-    ``IDRISS_14_BASE``        ``epistemic=False``
-    ========================  =========================================
-
-    Parameters
-    ----------
-    scenario : :class:`pygmm.model.Scenario`
-        earthquake scenario with ``mag``, ``dist_rup``, ``mechanism``,
-        ``v_s30``, and ``dist_jb`` (for ``epistemic=True``)
-    epistemic : bool, optional
-        include the USGS epistemic branches (default *True*)
-    ims : str or sequence of str, optional
-        intensity measures to compute (see
-        :class:`AbrahamsonSilvaKamai2014Nshmp`). If *None* (default), all
-        intensity measures are computed.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from pygmm.model import Scenario
-    >>> from pygmm.ground_motion.nga_west2_nshmp import Idriss2014Nshmp
-    >>> s = Scenario(
-    ...     mag=np.array([6.0, 7.0]), dist_rup=np.array([10.0, 50.0]),
-    ...     mechanism="RS", v_s30=760.0)
-    >>> Idriss2014Nshmp(s, epistemic=False).spec_accels.shape
-    (2, 21)
-    """
-
-    NAME = "Idriss (2014) (USGS nshmp-lib)"
-    ABBREV = "I14_NSHMP"
-
-    COEFF, _ = _load_coeffs("idriss_2014-nshmp.csv")
-    PERIODS = COEFF["period"]
-
-    INDEX_PGV = None
-    INDEX_PGA = 0
-    INDICES_PSA = np.arange(1, 22)
-
-    GMM_IDS = {
-        "IDRISS_14": dict(),
-        "IDRISS_14_BASE": dict(epistemic=False),
-    }
-    OPTIONS: tuple[str, ...] = ("epistemic",)
-
-    PARAMS = [
-        model.NumericParameter("mag", True, 5.0, 8.5),
-        model.NumericParameter("dist_rup", True, 0.0, 150.0),
-        model.NumericParameter("dist_jb", False),
-        model.CategoricalParameter("mechanism", True, MECHANISMS),
-        model.NumericParameter("v_s30", True, 450.0, 1500.0),
-    ]
-
-    def __init__(self, scenario: model.Scenario, epistemic: bool = True, ims=None):
-        """Initialize the model."""
-        super().__init__(scenario, ims, epistemic=epistemic)
-
-    def _calc(self) -> tuple:
-        c = self._c
-        periods = self._periods
-        mag = self._column("mag")
-        dist_rup = self._column("dist_rup")
-        v_s30 = self._column("v_s30")
-        is_rs = self._mechanism()["RS"]
-
-        large = mag > 6.75
-        a1 = np.where(large, c.a1_hi, c.a1_lo)
-        a2 = np.where(large, c.a2_hi, c.a2_lo)
-        b1 = np.where(large, c.b1_hi, c.b1_lo)
-        b2 = np.where(large, c.b2_hi, c.b2_lo)
-        ln_resp = (
-            a1
-            + a2 * mag
-            + c.a3 * (8.5 - mag) * (8.5 - mag)
-            - (b1 + b2 * mag) * np.log(dist_rup + 10.0)
-            + c.xi * np.log(np.minimum(v_s30, 1200.0))
-            + c.gamma * dist_rup
-            + np.where(is_rs, c.phi, 0.0)
-        )
-
-        # PGA (period 0) uses ln(0.05)
-        s1 = 0.035 * np.where(
-            periods <= 0.05,
-            np.log(0.05),
-            np.where(periods < 3.0, np.log(np.maximum(periods, 0.05)), np.log(3.0)),
-        )
-        s2 = 0.06 * np.where(mag <= 5.0, 5.0, np.where(mag < 7.5, mag, 7.5))
-        ln_std = 1.18 + s1 - s2
-        return ln_resp, ln_std
-
-
-@register(tectonic="active_crustal")
-class NgaWest2NshmpTree(model.GroundMotionModel):
-    r"""USGS 2023 CONUS NSHM logic trees of the NGA-West2 models.
-
-    The weighted logic trees of the nshmp-lib NGA-West2 models used for
-    active crust in the 2023 conterminous U.S. NSHM (nshmp-lib
-    ``GmmTotalTree``):
-
-    - "conus" (``TOTAL_TREE_CONUS_ACTIVE_CRUST_2023``, the active crust tree
-      of the current CONUS NSHM, nshm-conus 6.2.0): ``ASK_14_BASIN``,
-      ``BSSA_14_BASIN``, ``CB_14_BASIN``, and ``CY_14_BASIN`` with weights of
-      0.25.
-    - "los_angeles" (``TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_LOS_ANGELES``):
-      ``ASK_14``, ``BSSA_14``, ``CB_14``, and ``CY_14`` with weights of 0.125,
-      and the ``_BASIN`` and ``_CYBERSHAKE`` variants with weights of 0.0625.
-    - "san_francisco" (``TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_SAN_FRANCISCO``):
-      ``ASK_14``, ``BSSA_14``, ``CB_14``, and ``CY_14`` and the ``_BASIN``
-      variants with weights of 0.125.
-
-    As in nshmp-lib (``GroundMotions.combine``), all of the branches (models
-    and epistemic branches) are collapsed to a single median, :math:`\ln
-    \sum_i w_i \exp(\mu_i)`, and standard deviation, :math:`\sqrt{\sum_i w_i
-    \sigma_i^2}`. The collapsed values are suitable for comparisons, not for
-    hazard calculations, which should use the individual models and
-    epistemic branches (:meth:`~pygmm.model.GroundMotionModel.ln_branches`
-    gives all of the branches, with the products of the model and epistemic
-    weights).
-
-    Parameters
-    ----------
-    scenario : :class:`pygmm.model.Scenario`
-        earthquake scenario with the values of the models (see
-        :mod:`pygmm.ground_motion.nga_west2_nshmp`)
-    tree : str, optional
-        logic tree: "conus" (default), "los_angeles", or "san_francisco"
-    ims : str or sequence of str, optional
-        intensity measures to compute (see
-        :class:`AbrahamsonSilvaKamai2014Nshmp`). If *None* (default), all
-        intensity measures are computed.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from pygmm.model import Scenario
-    >>> from pygmm.ground_motion.nga_west2_nshmp import NgaWest2NshmpTree
-    >>> s = Scenario(
-    ...     mag=np.array([6.0, 7.0]), dist_rup=np.array([10.0, 50.0]),
-    ...     dist_jb=np.array([8.0, 48.0]), dist_x=np.array([8.0, -48.0]),
-    ...     dip=60.0, depth_tor=2.0, depth_bor=15.0, mechanism="RS",
-    ...     v_s30=400.0, depth_1_0=0.6, depth_2_5=4.0)
-    >>> NgaWest2NshmpTree(s, ims=["pga", "psa_1p000"]).spec_accels.shape
-    (2, 1)
-    """
-
-    NAME = "NGA-West2 2023 CONUS NSHM logic tree (USGS nshmp-lib)"
-    ABBREV = "NGAW2_NSHMP_TREE"
-
-    MODELS = (
-        AbrahamsonSilvaKamai2014Nshmp,
-        BooreStewartSeyhanAtkinson2014Nshmp,
-        CampbellBozorgnia2014Nshmp,
-        ChiouYoungs2014Nshmp,
-    )
-
-    #: Logic trees as (model, options, weight)
-    TREES: dict[str, tuple] = {
-        "conus": tuple((m, dict(basin=True), 0.25) for m in MODELS),
-        "los_angeles": tuple((m, dict(), 0.125) for m in MODELS)
-        + tuple((m, dict(basin=True), 0.0625) for m in MODELS)
-        + tuple((m, dict(basin=True, cybershake=True), 0.0625) for m in MODELS),
-        "san_francisco": tuple((m, dict(), 0.125) for m in MODELS)
-        + tuple((m, dict(basin=True), 0.125) for m in MODELS),
-    }
-
-    GMM_IDS = {
-        "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023": dict(tree="conus"),
-        "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_LOS_ANGELES": dict(tree="los_angeles"),
-        "TOTAL_TREE_CONUS_ACTIVE_CRUST_2023_SAN_FRANCISCO": dict(tree="san_francisco"),
-    }
-
-    PERIODS = AbrahamsonSilvaKamai2014Nshmp.PERIODS
-    INDEX_PGV = 0
-    INDEX_PGA = 1
-    INDICES_PSA = np.arange(2, 23)
-
-    PARAMS = [
-        model.NumericParameter("mag", True),
-        model.NumericParameter("dist_rup", True),
-        model.NumericParameter("dist_jb", True),
-        model.NumericParameter("dist_x", True),
-        model.NumericParameter("dip", True),
-        model.NumericParameter("width", False),
-        model.NumericParameter("depth_bor", False),
-        model.NumericParameter("depth_tor", True),
-        model.NumericParameter("depth_hyp", False),
-        model.CategoricalParameter("mechanism", True, MECHANISMS),
-        model.NumericParameter("v_s30", True),
-        model.NumericParameter("depth_1_0", False),
-        model.NumericParameter("depth_2_5", False),
-    ]
-
-    def __init__(self, scenario: model.Scenario, tree: str = "conus", ims=None):
-        """Initialize the model."""
-        if tree not in self.TREES:
-            raise ValueError(
-                f"tree must be one of {', '.join(self.TREES)}, not {tree!r}"
-            )
-        self.tree = tree
-        super().__init__(scenario, ims)
-        sum_resp: Any = 0.0
-        sum_var: Any = 0.0
-        self._branches = []
-        for cls, options, weight in self.TREES[tree]:
-            assert np.array_equal(cls.PERIODS, self.PERIODS)
-            m = cls(self._scenario, ims=ims, **options)
-            sum_resp = sum_resp + weight * np.exp(m._resp_vector)
-            sum_var = sum_var + weight * m._std_vector * m._std_vector
-            self._branches += [
-                (weight * w, ln_resp, ln_std) for w, ln_resp, ln_std in m._branch_list()
-            ]
-        self._ln_resp = np.log(sum_resp)
-        self._ln_std = np.sqrt(sum_var)

@@ -54,31 +54,28 @@ title: History
   Abrahamson and Bhasin (2020) conditional model. Both reproduce the nshmp-lib reference results.
 - Added: the USGS nshmp-lib versions of the NGA-West2 models used by the NSHM:
   `AbrahamsonSilvaKamai2014Nshmp`, `BooreStewartSeyhanAtkinson2014Nshmp`,
-  `CampbellBozorgnia2014Nshmp`, `ChiouYoungs2014Nshmp`, and `Idriss2014Nshmp` (module
+  `CampbellBozorgnia2014Nshmp`, and `ChiouYoungs2014Nshmp` (module
   `pygmm.ground_motion.nga_west2_nshmp`), with the `epistemic` (USGS NGA-West2 epistemic branches, collapsed as in
   nshmp-lib), `basin` (USGS deep basin scaling), `cybershake` (2023 NSHM CyberShake basin terms),
   `prvi` (2025 PRVI coefficients), and `vs30_measured` options that select the nshmp-lib `Gmm`
   variants (`GMM_IDS`: `ASK_14`, `_BASE`, `_BASIN`, `_CYBERSHAKE`, `_VS30_MEASURED`, `_PRVI`,
-  etc.), and `NgaWest2NshmpTree`, the 2023 CONUS NSHM active crust logic trees
-  (`TOTAL_TREE_CONUS_ACTIVE_CRUST_2023`, the current NSHM tree of the four `_BASIN` models, and the
-  Los Angeles and San Francisco trees). The models reproduce the nshmp-lib reference results. The
+  etc.). The active crust logic tree of the current CONUS NSHM uses the four `_BASIN` variants with
+  weights of 0.25. The models reproduce the nshmp-lib reference results. The
   style of faulting is given by `mechanism` (see `mechanism_from_rake`), `width` can be computed from
   `depth_bor`, and `depth_hyp` (CB14) from the rupture geometry as in nshmp-lib. The published
   NGA-West2 models are unchanged.
 - Added: `NgaEastSeeds`, the USGS NGA-East seed model logic tree of nshmp-lib (14 weighted seed
   models; `NGA_EAST_SEEDS_2018`, `_2023`, and `_2026` with the `adjusted` and `cpa` variants), which
-  the current CONUS NSHM combines with `NgaEast` for stable crust, and `NgaEastSeed`, the 27
-  individual NGA-East seed models of nshmp-lib (`NGA_EAST_SEED_*`: 24 table-based seeds, Shahjouei
-  and Pezeshk (2016), and Pezeshk et al. (2018)). Both reproduce the nshmp-lib reference results.
-  `dist_jb` is required for the seed tree and SP16. PGV is not provided for the seed tree, the seeds
-  without PGV tables, or Pezeshk et al. (2018) (nshmp-lib uses the Abrahamson and Bhasin (2020)
-  conditional PGV model, which is not implemented).
+  the current CONUS NSHM combines with `NgaEast` for stable crust. The model reproduces the
+  nshmp-lib reference results. `dist_jb` is required (for the Shahjouei and Pezeshk (2016) seed).
+  PGV is not provided (nshmp-lib uses the Abrahamson and Bhasin (2020) conditional PGV model for
+  the seeds without PGV tables, which is not implemented).
 - Added: `NgaEast`, the USGS nshmp-lib NGA-East versions used by the NSHM: "2018", "2023", and
   "2026" (default), with the `adjusted` (2023 short-period adjustment) and `cpa` (Chapman and Guo
   (2021) Gulf and Atlantic coastal plain amplification) variants. The 2023 and 2026 versions update
   the site amplification. The standard deviation combines the panel and EPRI models as in nshmp-lib
   (the square root of the weighted variances), and the model reproduces the nshmp-lib reference
-  results. `NgaEastUsgs2017` is unchanged and reproduces the earlier nshmp-haz implementation.
+  results.
 - Added: `depth_sed` scenario value, the thickness of the coastal plain sediments (km), used by
   `NgaEast` with `adjusted` or `cpa`.
 - Added: the final NGA-Subduction models of Abrahamson and Gülerce (2020, `AbrahamsonGulerce2020`),
@@ -90,16 +87,6 @@ title: History
   nshmp-lib reference results. As in nshmp-lib, the Cascadia basin term is applied in all regions
   when `depth_2_5` is given, and the Kuehn et al. (2020) epistemic uncertainty does not depend on
   distance.
-- Added: NGA-East for USGS (2017) model (`NgaEastUsgs2017`), following the USGS nshmp-haz
-  implementation: 17 weighted table-based median models for hard rock, the Stewart et al. (2017) and
-  Hashash et al. (2017) site amplification, and a 0.2 panel / 0.8 EPRI standard deviation. The
-  median and standard deviation are collapsed as in nshmp-haz, and reproduce its reference results.
-  The seed-model logic tree and the Gulf Coastal Plain variants are not included.
-- Added: NGA-Subduction USGS (2018) model (`NgaSubductionUsgs2018`), the USGS nshmp-haz version of
-  Abrahamson et al. (2018, PEER 2018/02) with Cascadia adjustments for interface and intraslab events
-  (`event_type`). `epistemic=False` gives the central branch (the nshmp-haz `*_NO_EPI` variants).
-  a14 for PGA is -0.223 (the 0.01 s value, as in OpenQuake) instead of -0.233 in nshmp-haz, which
-  increases intraslab PGA by about 4 to 5% relative to nshmp-haz.
 - Added: `ln_pga` property, the natural logarithm of PGA, which avoids computing `np.log(pga)`.
 - Added: `ims` argument for all ground motion models (`GroundMotionModel` subclasses) to compute only
   the requested intensity measures: "pga", "pgv", individual spectral periods such as "psa_1p000" (1.0 s),

@@ -1,4 +1,4 @@
-"""Test the NGA-East seed models and seed model logic tree of USGS nshmp-lib."""
+"""Test the NGA-East seed model logic tree of USGS nshmp-lib."""
 
 import itertools
 import math
@@ -10,8 +10,7 @@ import pandas as pd
 import pytest
 
 from pygmm.ground_motion import nga_east
-from pygmm.ground_motion.nga_east import NgaEast, NgaEastSeed, NgaEastSeeds
-from pygmm.ground_motion.nga_east_usgs_2017 import NgaEastUsgs2017
+from pygmm.ground_motion.nga_east import TABLE_DISTS, TABLE_MAGS, NgaEast, NgaEastSeeds
 from pygmm.model import Scenario
 
 from .test_nga_east import REF_CASES, ref_cpa_ratio, ref_sigma, ref_site_amp, ref_table
@@ -22,18 +21,8 @@ DATA = os.path.join(os.path.dirname(__file__), "data")
 # Results of nshmp-lib for the 432 inputs of nga-east-inputs.csv and 8 intensity
 # measures, given with 10 decimals
 NSHMP = pd.read_csv(os.path.join(DATA, "nga_east_seeds-nshmp.csv.gz"), comment="#")
-# Results of nshmp-lib for Pezeshk et al. (2018), 16 inputs and 21 intensity
-# measures
-NSHMP_PZCT18 = pd.read_csv(
-    os.path.join(DATA, "pezeshk_et_al_2018-nshmp.csv.gz"), comment="#"
-)
 
 VARIANTS = list(NgaEastSeeds.GMM_IDS.items())
-SEEDS = list(NgaEastSeed.SEEDS)
-# Seeds with PGV
-SEEDS_PGV = [
-    s for s in SEEDS if s not in nga_east.SEEDS_WITHOUT_PGV and "PZCT18" not in s
-]
 
 
 def compute(version="2026", adjusted=False, cpa=False, ims=None, **kwds):
@@ -42,12 +31,6 @@ def compute(version="2026", adjusted=False, cpa=False, ims=None, **kwds):
         return NgaEastSeeds(
             Scenario(**kwds), version=version, adjusted=adjusted, cpa=cpa, ims=ims
         )
-
-
-def compute_seed(seed, ims=None, **kwds):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return NgaEastSeed(Scenario(**kwds), seed=seed, ims=ims)
 
 
 def full_ln_resp(m):
@@ -88,7 +71,6 @@ def test_nshmp_inputs():
     assert NSHMP.loc[NSHMP.depth_sed.notna(), "index"].nunique() == 11
     # The reference inputs have dist_jb equal to dist_rup
     np.testing.assert_array_equal(NSHMP.dist_jb, NSHMP.dist_rup)
-    assert len(NSHMP_PZCT18) == 16 * 21
 
 
 @pytest.mark.parametrize("gmm,options", VARIANTS)
@@ -101,22 +83,6 @@ def test_nshmp(gmm, options):
     # The reference values are rounded to 10 decimals
     np.testing.assert_allclose(median, NSHMP["median_" + gmm], rtol=0, atol=5.1e-11)
     np.testing.assert_allclose(sigma, NSHMP["sigma"], rtol=0, atol=5.1e-11)
-
-
-@pytest.mark.parametrize("seed", ["PZCT18_M1SS", "PZCT18_M2ES"])
-def test_nshmp_pzct18(seed):
-    m = compute_seed(seed, **nshmp_scenario(NSHMP_PZCT18))
-    rows = np.arange(len(NSHMP_PZCT18))
-    cols = nshmp_columns(NSHMP_PZCT18.imt)
-    gmm = "NGA_EAST_SEED_" + seed
-    median = np.exp(full_ln_resp(m)[rows, cols])
-    sigma = full_ln_std(m)[rows, cols]
-    np.testing.assert_allclose(
-        median, NSHMP_PZCT18["median_" + gmm], rtol=0, atol=5.1e-11
-    )
-    np.testing.assert_allclose(
-        sigma, NSHMP_PZCT18["sigma_" + gmm], rtol=0, atol=5.1e-11
-    )
 
 
 def test_nshmp_variants_differ():
@@ -143,39 +109,15 @@ def test_seed_weights():
     assert len(weights) == 14
     assert math.isclose(sum(weights.values()), 1.0, rel_tol=1e-14)
     assert weights["SP16"] == 0.1089
-    assert set(weights) <= set(SEEDS)
-
-
-def test_seeds():
-    assert len(SEEDS) == 27
-    assert len(set(SEEDS)) == 27
-    assert len(NgaEastSeed.GMM_IDS) == 27
-    assert NgaEastSeed.GMM_IDS["NGA_EAST_SEED_B_BCA10D"] == dict(seed="B_bca10d")
-    assert NgaEastSeed.GMM_IDS["NGA_EAST_SEED_PZCT18_M1SS"] == dict(seed="PZCT18_M1SS")
-    assert len(SEEDS_PGV) == 27 - 7 - 2
-
-
-@pytest.mark.parametrize("version", ["2018", "2023", "2026"])
-def test_2018_tree_is_the_weighted_seeds(version):
-    # The 2018 tree is the weighted mean of the individual seeds, which use the
-    # 2018 site amplification
-    kwds = nshmp_scenario(NSHMP)
-    rng = np.random.default_rng(2)
-    kwds["dist_jb"] = kwds["dist_rup"] * rng.uniform(0.5, 1.0, len(NSHMP))
-    total = 0
-    for seed, weight in NgaEastSeeds.SEED_WEIGHTS.items():
-        m = compute_seed(seed, ims=["pga", "psa_all"], **kwds)
-        total = total + weight * np.exp(m._ln_resp)
-    tree = compute(version=version, **kwds)
-    if version == "2018":
-        np.testing.assert_allclose(tree._ln_resp, np.log(total), rtol=0, atol=1e-14)
-    else:
-        assert np.max(np.abs(tree._ln_resp - np.log(total))) > 1e-3
+    # The table-based seeds and SP16
+    assert set(weights) == set(nga_east.SEED_TABLE_IDS) | {"SP16"}
+    assert len(nga_east.SEED_TABLE_IDS) == 13
+    assert set(nga_east.SEEDS_WITHOUT_PGV) <= set(nga_east.SEED_TABLE_IDS)
 
 
 # Scalar transliteration of nshmp-lib NgaEast.UsgsSeeds_2018, UsgsSeeds_2023,
-# NgaEast.Seed, ShahjoueiPezeshk_2016, and PezeshkEtAl_2018, used to check the
-# vectorized models at cases that are not in the nshmp-lib results
+# NgaEast.Seed, and ShahjoueiPezeshk_2016, used to check the vectorized model at
+# cases that are not in the nshmp-lib results
 
 
 def ref_pezeshk_mean(c, mag, dist):
@@ -201,15 +143,13 @@ def ref_seed_rock(seed, j, mag, dist_rup, dist_jb):
     """ln hard-rock median at period j and ln hard-rock PGA of a seed."""
     j_pga = NgaEast.INDEX_PGA
     if seed in nga_east.SEED_TABLE_IDS:
-        n_r, n_m = len(NgaEastUsgs2017.TABLE_DISTS), len(NgaEastUsgs2017.TABLE_MAGS)
+        n_r, n_m = len(TABLE_DISTS), len(TABLE_MAGS)
         tables = nga_east._load_seed_tables()[nga_east.SEED_TABLE_IDS.index(seed)]
         mu = ref_table(tables[:, j].reshape(n_r, n_m), mag, dist_rup)
         mu_pga = ref_table(tables[:, j_pga].reshape(n_r, n_m), mag, dist_rup)
         return mu, mu_pga
-    if seed == "SP16":
-        coeff, dist = NgaEastSeed.COEFF_SP16, dist_jb
-    else:
-        coeff, dist = NgaEastSeed.COEFF_PZCT18[seed], dist_rup
+    assert seed == "SP16"
+    coeff, dist = NgaEastSeeds.COEFF_SP16, dist_jb
     return (
         ref_pezeshk_mean(ref_row(coeff, j), mag, dist),
         ref_pezeshk_mean(ref_row(coeff, j_pga), mag, dist),
@@ -273,41 +213,8 @@ def ref_seeds(version, adjusted, cpa, mag, dist_rup, dist_jb, v_s30, depth_sed):
     return np.array(ln_resps), np.array(ln_stds)
 
 
-def ref_seed(seed, mag, dist_rup, dist_jb, v_s30):
-    """ln median and sigma at the periods of an individual nshmp-lib seed."""
-    ln_resps, ln_stds = [], []
-    for j, period in enumerate(NgaEast.PERIODS):
-        if j == NgaEast.INDEX_PGV and seed not in SEEDS_PGV:
-            continue
-        c = ref_row(NgaEast.COEFF, j)
-        mu, mu_pga = ref_seed_rock(seed, j, mag, dist_rup, dist_jb)
-        f_s, s_s = ref_site_amp(c, "2018", period, math.exp(mu_pga), v_s30)
-        ln_resps.append(ref_apply(mu, f_s, s_s, 1.0))
-        if seed == "SP16":
-            cs = ref_row(NgaEastSeed.COEFF_SP16, j)
-            psi = -3.054e-5 if period == -1 else -6.898e-3
-            s = cs["c12"] * mag + cs["c13"] if mag <= 6.5 else psi * mag + cs["c14"]
-            ln_stds.append(math.sqrt(s * s + cs["sigma_reg"] ** 2))
-        elif seed.startswith("PZCT18"):
-            cs = ref_row(NgaEastSeed.COEFF_PZCT18[seed], j)
-            if mag <= 4.5:
-                tau, phi = cs["c12"], cs["c19"] + cs["c20"] * mag
-            elif mag <= 5.0:
-                tau, phi = cs["c13"] + cs["c14"] * mag, cs["c21"] + cs["c22"] * mag
-            elif mag <= 6.5:
-                tau, phi = cs["c15"] + cs["c16"] * mag, cs["c23"] + cs["c24"] * mag
-            else:
-                tau, phi = cs["c17"] + cs["c18"] * mag, cs["c25"]
-            ln_stds.append(math.sqrt(tau * tau + phi * phi))
-        else:
-            s_epri, s_panel = ref_sigma(c, mag, v_s30)
-            ln_stds.append(math.sqrt(0.8 * s_epri**2 + 0.2 * s_panel**2))
-    return np.array(ln_resps), np.array(ln_stds)
-
-
 # Includes SP16 at short and zero Joyner-Boore distances, magnitudes beyond the
-# SP16 and Pezeshk et al. (2018) magnitude breaks, and the cases of the NgaEast
-# tests
+# SP16 magnitude break, and the cases of the NgaEast tests
 SEED_CASES = REF_CASES + [
     (4.3, 3.0, 0.0, 760.0, np.nan),
     (5.0, 1.0, 0.5, 300.0, 0.0),
@@ -344,31 +251,21 @@ def test_reference_implementation(
     np.testing.assert_allclose(m._ln_std, ln_std, rtol=1e-12)
 
 
-@pytest.mark.parametrize("seed", SEEDS)
-@pytest.mark.parametrize("mag,dist_rup,dist_jb,v_s30,depth_sed", SEED_CASES)
-def test_seed_reference_implementation(seed, mag, dist_rup, dist_jb, v_s30, depth_sed):
-    m = compute_seed(seed, mag=mag, dist_rup=dist_rup, dist_jb=dist_jb, v_s30=v_s30)
-    ln_resp, ln_std = ref_seed(seed, mag, dist_rup, dist_jb, v_s30)
-    np.testing.assert_allclose(m._ln_resp, ln_resp, rtol=1e-12, atol=1e-12)
-    np.testing.assert_allclose(m._ln_std, ln_std, rtol=1e-12)
-
-
 def test_sp16_uses_dist_jb():
     kwds = dict(mag=6.0, dist_rup=10.0, v_s30=760.0)
-    a = compute_seed("SP16", dist_jb=10.0, **kwds)
-    b = compute_seed("SP16", dist_jb=2.0, **kwds)
-    assert np.all(b._ln_resp > a._ln_resp)
-    # The table-based seeds and PZCT18 do not use dist_jb
-    for seed in ["B_bca10d", "PZCT18_M2ES"]:
-        np.testing.assert_array_equal(
-            compute_seed(seed, dist_jb=10.0, **kwds)._ln_resp,
-            compute_seed(seed, dist_jb=2.0, **kwds)._ln_resp,
-        )
-        compute_seed(seed, **kwds)
     # The tree depends on dist_jb through SP16
     a = compute(dist_jb=10.0, **kwds)
     b = compute(dist_jb=2.0, **kwds)
     assert np.all(b._ln_resp > a._ln_resp)
+    # Only the SP16 branches
+    branches_a = a.ln_branches("psa")
+    branches_b = b.ln_branches("psa")
+    seeds = [s for s in NgaEastSeeds.SEED_WEIGHTS for _ in range(2)]
+    for seed, (_, mu_a, _), (_, mu_b, _) in zip(seeds, branches_a, branches_b):
+        if seed == "SP16":
+            assert np.all(mu_b > mu_a)
+        else:
+            np.testing.assert_array_equal(mu_a, mu_b)
 
 
 def test_dist_jb_is_required():
@@ -376,24 +273,24 @@ def test_dist_jb_is_required():
     with pytest.raises(ValueError, match="dist_jb is required"):
         compute(**kwds)
     with pytest.raises(ValueError, match="dist_jb is required"):
-        compute_seed("SP16", **kwds)
-    with pytest.raises(ValueError, match="dist_jb is required"):
-        compute_seed("sp16", mag=np.array([5.0, 6.0]), dist_rup=10.0, v_s30=760.0)
+        compute(mag=np.array([5.0, 6.0]), dist_rup=10.0, v_s30=760.0)
 
 
 def test_graizer_first_distance():
     # The Graizer16 and Graizer17 tables give the first distance as 0.01 km,
     # which nshmp-lib uses as 1e-5 km like the other tables
-    for seed in ["Graizer16", "Graizer17"]:
-        a = compute_seed(seed, mag=6.0, dist_rup=0.0, v_s30=3000.0)
-        b = compute_seed(seed, mag=6.0, dist_rup=1e-5, v_s30=3000.0)
-        np.testing.assert_array_equal(a._ln_resp, b._ln_resp)
+    kwds = dict(mag=6.0, dist_jb=0.0, v_s30=3000.0)
+    a = compute(dist_rup=0.0, **kwds)
+    b = compute(dist_rup=1e-5, **kwds)
+    np.testing.assert_array_equal(a._ln_resp, b._ln_resp)
+    for branch_a, branch_b in zip(a.ln_branches("psa"), b.ln_branches("psa")):
+        np.testing.assert_array_equal(branch_a[1], branch_b[1])
 
 
 def test_seed_tables():
     tables = nga_east._load_seed_tables()
-    n = len(NgaEastUsgs2017.TABLE_DISTS) * len(NgaEastUsgs2017.TABLE_MAGS)
-    assert tables.shape == (24, n, 23)
+    n = len(TABLE_DISTS) * len(TABLE_MAGS)
+    assert tables.shape == (13, n, 23)
     for k, seed in enumerate(nga_east.SEED_TABLE_IDS):
         pgv = tables[k, :, NgaEast.INDEX_PGV]
         if seed in nga_east.SEEDS_WITHOUT_PGV:
@@ -411,9 +308,6 @@ def test_sigma_is_that_of_nga_east():
     expected = NgaEast(Scenario(**kwds), ims=["pga", "psa_all"])._ln_std
     for _, options in VARIANTS:
         np.testing.assert_allclose(compute(**options, **kwds)._ln_std, expected, 1e-15)
-    np.testing.assert_allclose(
-        compute_seed("Frankel", **kwds)._ln_std[1:], expected, rtol=1e-15
-    )
 
 
 @pytest.mark.parametrize(
@@ -431,14 +325,8 @@ def test_invalid_options(options, match):
         )
 
 
-def test_invalid_seed():
+def test_version_is_a_string():
     s = Scenario(mag=6.0, dist_rup=20.0, dist_jb=20.0, v_s30=760.0)
-    with pytest.raises(ValueError, match="seed must be one of"):
-        NgaEastSeed(s, seed="SP17")
-    # Not case sensitive
-    m = NgaEastSeed(s, seed="b_BCA10D")
-    assert m.seed == "B_bca10d"
-    np.testing.assert_array_equal(m._ln_resp, NgaEastSeed(s)._ln_resp)
     assert NgaEastSeeds(s, version=2023).version == "2023"
 
 
@@ -449,24 +337,6 @@ def test_pgv():
     with pytest.raises(NotImplementedError):
         NgaEastSeeds(s).pgv
     assert NgaEastSeeds.INDEX_PGV is None
-    for seed in SEEDS:
-        m = NgaEastSeed(s, seed=seed)
-        if seed in SEEDS_PGV:
-            assert m.INDEX_PGV == NgaEast.INDEX_PGV
-            assert m._ln_resp.shape == (23,)
-            assert np.isfinite(m.pgv) and np.isfinite(m.ln_std_pgv)
-            np.testing.assert_array_equal(
-                NgaEastSeed(s, seed=seed, ims="pgv").pgv, m.pgv
-            )
-        else:
-            assert m.INDEX_PGV is None
-            assert m._ln_resp.shape == (22,)
-            with pytest.raises(NotImplementedError):
-                m.pgv
-            with pytest.raises(ValueError, match="does not provide 'pgv'"):
-                NgaEastSeed(s, seed=seed, ims=["pgv"])
-    # The class attribute is not changed
-    assert NgaEastSeed.INDEX_PGV == NgaEast.INDEX_PGV
 
 
 def test_out_of_range_values_warn():
@@ -477,7 +347,7 @@ def test_out_of_range_values_warn():
             )
         )
     with pytest.warns(UserWarning, match="mag"):
-        NgaEastSeed(Scenario(mag=8.5, dist_rup=20.0, v_s30=760.0))
+        NgaEastSeeds(Scenario(mag=8.5, dist_rup=20.0, dist_jb=20.0, v_s30=760.0))
 
 
 # Vectorized models
@@ -499,16 +369,12 @@ KEYS = [
     "interp_spec_accels",
     "interp_ln_stds",
 ]
-GRID_MODELS = [("tree", gmm) for gmm, _ in VARIANTS] + [
-    ("seed", s) for s in ["B_bca10d", "Graizer16", "SP16", "PZCT18_M2ES"]
-]
+GRID_MODELS = [("tree", gmm) for gmm, _ in VARIANTS]
 
 
 def make(kind, name, **kwds):
-    if kind == "tree":
-        return compute(**NgaEastSeeds.GMM_IDS[name], **kwds)
-    kwds.pop("depth_sed", None)
-    return compute_seed(name, **kwds)
+    assert kind == "tree"
+    return compute(**NgaEastSeeds.GMM_IDS[name], **kwds)
 
 
 def results(m):
@@ -668,10 +534,8 @@ def vector_scenario(n=500, seed=0):
 
 
 def make_vector(kind, name, ims=None):
-    s = vector_scenario()
-    if kind == "tree":
-        return NgaEastSeeds(s, ims=ims, **NgaEastSeeds.GMM_IDS[name])
-    return NgaEastSeed(s, seed=name, ims=ims)
+    assert kind == "tree"
+    return NgaEastSeeds(vector_scenario(), ims=ims, **NgaEastSeeds.GMM_IDS[name])
 
 
 @pytest.mark.parametrize("kind,name", GRID_MODELS)
@@ -723,8 +587,6 @@ def test_selected_periods_match_default(kind, name):
 def test_invalid_ims_raise(ims, match):
     with pytest.raises(ValueError, match=match):
         NgaEastSeeds(vector_scenario(), ims=ims)
-    with pytest.raises(ValueError, match=match):
-        NgaEastSeed(vector_scenario(), seed="PZCT18_M1SS", ims=ims)
 
 
 @pytest.mark.parametrize("ims", [None, ["pga"]])
@@ -734,5 +596,3 @@ def test_ln_pga(ims):
     assert m.ln_pga.shape == (500,)
     np.testing.assert_array_equal(np.exp(m.ln_pga), m.pga)
     np.testing.assert_array_equal(m.ln_pga, NgaEastSeeds(s, cpa=True).ln_pga)
-    m = NgaEastSeed(s, seed="SP16", ims=ims)
-    np.testing.assert_array_equal(np.exp(m.ln_pga), m.pga)
